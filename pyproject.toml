@@ -1,0 +1,20 @@
+[project]
+name = "langchain-demo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain>=1.2.6",
+    "langchain-deepseek>=1.0.1",
+    "langchain-openai>=1.1.7",
+    "langgraph>=1.0.7",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.0",
+    "pymysql>=1.1.2",
+    "sqlalchemy>=2.0.46",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
