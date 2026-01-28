@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     llm_type: LLMType = LLMType.QWEN
 
     llm_base_url: str = "http://192.168.60.172:9090/v1"
-    llm_model: str = "Qwen3-235B-A22B-Instruct-2507"
-    llm_api_key: str = "test_qwen"
+    llm_model: str = "GLM-4.7"
+    llm_api_key: str = "test_glm"
 
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-reasoner"
