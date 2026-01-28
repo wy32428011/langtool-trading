@@ -10,6 +10,7 @@ from langgraph.graph import StateGraph, END, START
 from agent import Agent
 from database import Database
 from langchain_core.messages import HumanMessage, SystemMessage
+from config import settings
 
 # 定义状态结构
 class AgentState(TypedDict):
@@ -108,6 +109,7 @@ class AnalysisFlow:
         technical_analysis = state.get('technical_analysis', '暂无技术面分析')
         real_time_data = state.get('real_time_data', {})
         stock_info = state.get('stock_info', {})
+        alpha158 = state.get('alpha158', 0.0)
         
         prompt = f"""
         你是一位金牌资深股票交易员。请结合以下基本面分析和技术面分析，对股票 {stock_info.get('name')} ({state['stock_code']}) 做出最终的交易判断。
@@ -121,10 +123,18 @@ class AnalysisFlow:
         ### 3. 实时行情
         - 当前价格: {real_time_data.get('current_price', 0)}
         - 今日涨跌幅: {real_time_data.get('change_percent', 0)}%
-        
+"""
+        if settings.enable_factor_analysis:
+            prompt += f"        - 智能预测因子 (Alpha158): {alpha158:.4f}\n"
+
+        prompt += f"""
         ### 任务
         请综合多方因素，给出最终的交易建议和价格预测。**交易指令(action)应当包含股票名称和代码，且描述应具体详尽，包含具体的操作动作、仓位建议或关键触发条件。**
-        
+"""
+        if settings.enable_factor_analysis:
+            prompt = prompt.replace("综合多方因素", "综合多方因素（包括Alpha158因子结论）")
+
+        prompt += f"""
         请严格按以下JSON格式返回，不要有任何多余的文字说明：
         {{
           "stock_code": "{state['stock_code']}",
@@ -219,8 +229,11 @@ class AnalysisFlow:
         history_data = self.db.get_stock_history(stock_code, 30)
         real_time_data = self.db.get_real_time_data(stock_info.get('full_code'))
         indicators = self._calculate_indicators(history_data)
-        alpha158_dict = self.db.get_factor_158([stock_code])
-        alpha158 = alpha158_dict.get(stock_code, 0.0)
+        
+        alpha158 = 0.0
+        if settings.enable_factor_analysis:
+            alpha158_dict = self.db.get_factor_158([stock_code])
+            alpha158 = alpha158_dict.get(stock_code, 0.0)
         
         initial_state = {
             "stock_code": stock_code,

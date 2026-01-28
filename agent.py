@@ -12,14 +12,26 @@ class Agent:
             self.model = ChatDeepSeek(
                 base_url=settings.deepseek_base_url,
                 model=settings.deepseek_model,
-                api_key=settings.deepseek_api_key
+                api_key=settings.deepseek_api_key,
+                model_kwargs={
+                    "chat_template_kwargs": {
+                        "enable_thinking": True,
+                        "clear_thinking": False
+                    }
+                }
             )
         else:
             # 默认使用 OpenAI 兼容接口 (如 Qwen, SiliconFlow 等)
             self.model = ChatOpenAI(
                 base_url=settings.llm_base_url,
                 model=settings.llm_model,
-                api_key=settings.llm_api_key
+                api_key=settings.llm_api_key,
+                model_kwargs={
+                    "chat_template_kwargs": {
+                        "enable_thinking": True,
+                        "clear_thinking": False
+                    }
+                }
             )
         
         self.system_prompt = (

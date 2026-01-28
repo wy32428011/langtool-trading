@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 from agent import Agent
 from database import Database
+from config import settings
 
 
 class Analysis:
@@ -133,8 +134,11 @@ class Analysis:
         - 布林带: 上轨={indicators.get('bb_upper', 'N/A')}, 下轨={indicators.get('bb_lower', 'N/A')}
         - 量比 (今日成交量/VMA5): {indicators.get('volume_ratio', 'N/A')}
         - 价格位置: {"股价在MA5之上" if indicators.get('is_above_ma5') else "股价在MA5之下" if indicators.get('is_above_ma5') is not None else "位置待定(MA5未生成)"}, {"股价在MA60之上" if indicators.get('is_above_ma60') else "股价在MA60之下" if indicators.get('is_above_ma60') is not None else "位置待定(MA60未生成)"}
-        - 智能预测因子 (Alpha158): {factor_158:.4f} (该值基于量价多因子模型计算，越高通常代表短期看涨信号越强)
+        """
+        if settings.enable_factor_analysis:
+            prompt += f"\n        - 智能预测因子 (Alpha158): {factor_158:.4f} (该值基于量价多因子模型计算，越高通常代表短期看涨信号越强)\n"
 
+        prompt += f"""
         ### 4. 最近60个交易日历史走势 (倒序排列)
         {history_summary}
 
@@ -143,8 +147,12 @@ class Analysis:
         1. **趋势分析**：结合均线系统（MA5/MA20/MA60的多头或空头排列）与近60日量价走势，判断当前是处于上涨通道、下跌通道还是震荡筑底。
         2. **技术面共振**：结合 RSI、MACD、KDJ 等指标看是否存在背离、金叉/死叉或超买超卖状态。
         3. **形态与关键位**：识别当前的K线形态，利用布林带和历史高低点找出近期的压力位和支撑位。
-        4. **胜率评估**：综合Alpha158因子与技术面共振情况，给出T+1日的交易建议。**交易指令(action)应当包含股票名称和代码，且描述应具体详尽，包含具体的操作动作、仓位建议或关键触发条件。**
-
+        4. **胜率评估**：综合所给指标与走势情况，给出T+1日的交易建议。**交易指令(action)应当包含股票名称和代码，且描述应具体详尽，包含具体的操作动作、仓位建议或关键触发条件。**
+"""
+        if settings.enable_factor_analysis:
+            prompt = prompt.replace("综合所给指标与走势情况", "综合Alpha158因子与技术面共振情况")
+        
+        prompt += """
         ### 6. 输出格式
         请严格按以下JSON格式返回，不要有任何多余的文字说明：
         {{
@@ -233,8 +241,10 @@ class Analysis:
         indicators = self._calculate_indicators(history_data)
         
         # 获取智能因子
-        factor_158_dict = database.get_factor_158([stock_code])
-        factor_158 = factor_158_dict.get(stock_code, 0.0)
+        factor_158 = 0.0
+        if settings.enable_factor_analysis:
+            factor_158_dict = database.get_factor_158([stock_code])
+            factor_158 = factor_158_dict.get(stock_code, 0.0)
 
         human_prompt = self._build_human_prompt(stock_data, stock_data, history_data, current_data, indicators, factor_158)
 
