@@ -291,7 +291,7 @@ class AnalysisFlow:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='股票多角色分析流程')
-    parser.add_argument('--code', type=str, default='603051', help='股票代码')
+    parser.add_argument('--code', type=str, default='002283', help='股票代码')
     args = parser.parse_args()
     
     flow = AnalysisFlow()
