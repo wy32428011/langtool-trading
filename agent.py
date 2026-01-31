@@ -13,6 +13,8 @@ class Agent:
                 base_url=settings.deepseek_base_url,
                 model=settings.deepseek_model,
                 api_key=settings.deepseek_api_key,
+                max_tokens=settings.max_tokens,
+                temperature=settings.llm_temperature,
             )
         else:
             # 默认使用 OpenAI 兼容接口 (如 Qwen, SiliconFlow 等)
@@ -20,6 +22,8 @@ class Agent:
                 base_url=settings.llm_base_url,
                 model=settings.llm_model,
                 api_key=settings.llm_api_key,
+                max_tokens=settings.max_tokens,
+                temperature=settings.llm_temperature,
             )
         
         self.system_prompt = (

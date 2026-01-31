@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
@@ -101,18 +102,20 @@ class Analysis:
     def _build_human_prompt(self, stock_data, stock_info, history_data, current_data, indicators, factor_158):
         """构建分析提示词"""
 
+        # 将历史数据转换为Markdown表格，提高模型阅读准确性
+        history_table = "| 日期 | 开盘 | 最高 | 最低 | 收盘 | 涨跌幅 | 成交量 | 换手率 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
         # 取最近60天的历史数据，提供更丰富的趋势背景
-        history_list = []
         for d in history_data[:60]:
             turn_str = f"{d.get('turn', 0)}%" if d.get('turn') else "N/A"
-            history_list.append(
-                f"{d['date']}: 开盘={d['open']}, 最高={d['high']}, 最低={d['low']}, 收盘={round(d['close'], 2)}, "
-                f"涨跌幅={d['pctChg']}%, 成交量={d['volume']}, 换手率={turn_str}"
-            )
-        history_summary = "\n".join(history_list)
+            history_table += f"| {d['date']} | {d['open']} | {d['high']} | {d['low']} | {round(d['close'], 2)} | {d['pctChg']}% | {d['volume']} | {turn_str} |\n"
 
         prompt = f"""
-        你是一位拥有20年实战经验的金牌股票交易员。请根据以下详细数据，对股票 {stock_data.get('name', '')} ({stock_data.get('code', '')}) 进行深入的T+1交易机会分析。
+        你是一位拥有20年实战经验的金牌股票交易员。请根据以下详细的**真实数据**，对股票 {stock_data.get('name', '')} ({stock_data.get('code', '')}) 进行深入的T+1交易机会分析。
+
+        ### ⚠️ 重要指令：
+        1. **严禁幻觉**：仅使用下方提供的数据进行分析。如果数据中没有提到的信息，请不要自行编造。
+        2. **数据核对**：在给出建议价格前，请务必核对历史最高价、最低价和当前价格，确保建议价格在合理逻辑范围内。
+        3. **逻辑严密**：分析过程应直接引用数据指标。
 
         ### 1. 基本面背景
         - 行业: {stock_info.get('sector', '') if stock_info else '未知'}
@@ -139,27 +142,24 @@ class Analysis:
             prompt += f"\n        - 智能预测因子 (Alpha158): {factor_158:.4f} (该值基于量价多因子模型计算，越高通常代表短期看涨信号越强)\n"
 
         prompt += f"""
-        ### 4. 最近60个交易日历史走势 (倒序排列)
-        {history_summary}
+        ### 4. 最近60个交易日历史走势
+        {history_table}
 
         ### 5. 分析要求
         请从以下维度进行专业研判：
-        1. **趋势分析**：结合均线系统（MA5/MA20/MA60的多头或空头排列）与近60日量价走势，判断当前是处于上涨通道、下跌通道还是震荡筑底。
-        2. **技术面共振**：结合 RSI、MACD、KDJ 等指标看是否存在背离、金叉/死叉或超买超卖状态。
-        3. **形态与关键位**：识别当前的K线形态，利用布林带和历史高低点找出近期的压力位和支撑位。
-        4. **胜率评估**：综合所给指标与走势情况，给出T+1日的交易建议。**交易指令(action)应当包含股票名称和代码，且描述应具体详尽，包含具体的操作动作、仓位建议或关键触发条件。**
-"""
-        if settings.enable_factor_analysis:
-            prompt = prompt.replace("综合所给指标与走势情况", "综合Alpha158因子与技术面共振情况")
-        
-        prompt += """
+        1. **思维链分析**：在输出结论前，先在心中或 `thought_process` 字段中梳理：大盘背景（如有）->均线系统->震荡指标状态->形态识别->风险/收益比。
+        2. **趋势分析**：结合均线系统（MA5/MA20/MA60的多头或空头排列）与近60日量价走势，判断当前是处于上涨通道、下跌通道还是震荡筑底。
+        3. **技术面共振**：结合 RSI、MACD、KDJ 等指标看是否存在背离、金叉/死叉或超买超卖状态。
+        4. **最终决策**：综合Alpha158因子与技术面共振情况，给出T+1日的交易建议。
+
         ### 6. 输出格式
         请严格按以下JSON格式返回，不要有任何多余的文字说明：
         {{
-          "stock_code": "股票代码",
-          "stock_name": "股票名称",
-          "current_price": "当前价格",
-          "analysis": "详细的分析结论",
+          "stock_code": "{stock_data.get('code', '')}",
+          "stock_name": "{stock_data.get('name', '')}",
+          "current_price": {current_data.get('current_price', 0)},
+          "thought_process": "此处记录你的详细推理过程，确保逻辑推导自上方数据，无编造内容",
+          "analysis": "详细的分析结论摘要",
           "trend": "上涨/下跌/震荡",
           "support": "支撑位价格",
           "resistance": "压力位价格",
@@ -191,6 +191,7 @@ class Analysis:
             'analysis_time': '分析时间',
             'current_price': '当前价格',
             'alpha158': 'Alpha158因子',
+            'thought_process': '推理过程',
             'analysis': '详细结论',
             'trend': '趋势判断',
             'support': '支撑位',
@@ -198,11 +199,20 @@ class Analysis:
             'recommendation': '投资建议',
             'action': '操作动作',
             'predicted_price': '预期目标价',
-            'predicted_buy_price': '建议买入价',
-            'predicted_sell_price': '建议止损价',
+            'predicted_buy_price': '建议买入价格',
+            'predicted_sell_price': '建议卖出价格',
             'confidence': '信心值',
             'risk_warning': '风险提示'
         }
+        
+        # 确保所有列都存在且顺序一致
+        for col in column_mapping.keys():
+            if col not in df.columns:
+                df[col] = ""
+        
+        # 按照映射顺序重排
+        df = df[list(column_mapping.keys())]
+        
         df.rename(columns=column_mapping, inplace=True)
 
         # 写入Excel
@@ -313,6 +323,8 @@ class Analysis:
         stock_codes = database.get_all_stock_codes()
         print(f"获取到 {len(stock_codes)} 只股票，开始多线程批量分析 (max_workers={max_workers})...")
         
+        start_time = time.time()  # 记录开始时间
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"batch_analysis_{timestamp}.xlsx"
         
@@ -334,8 +346,13 @@ class Analysis:
                 except Exception as e:
                     print(f"分析股票 {code} 时发生异常: {e}")
         
+        end_time = time.time()  # 记录结束时间
+        duration = end_time - start_time
+        
         if valid_results:
             print(f"批量分析完成，共成功分析 {len(valid_results)} 只股票。")
         else:
             print("批量分析完成，但未获取到任何有效结果。")
+        
+        print(f"整个过程分析完成，总耗时: {duration:.2f} 秒 (约 {duration/60:.2f} 分钟)")
 

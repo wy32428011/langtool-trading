@@ -11,17 +11,23 @@ class LLMType(str, Enum):
 class Settings(BaseSettings):
 
 
-    db_host: str = "192.168.60.140"
-    db_port: int = 9030
+    db_host: str = "172.16.3.27"
+    db_port: int = 49030
     db_name: str = "stock"
     db_user: str = "root"
     db_password: str = ""
 
     llm_type: LLMType = LLMType.QWEN
+    max_tokens: int = 2048
+    llm_temperature: float = 0.1
 
-    llm_base_url: str = "http://192.168.60.172:9090/v1"
-    llm_model: str = "GLM-4.7"
-    llm_api_key: str = "test_glm"
+    llm_base_url: str = "http://172.16.3.27:49090/v1"
+    # llm_model: str = "Qwen3-235B-A22B-Instruct-2507"
+    # llm_api_key: str = "test_qwen"
+    llm_model: str = "DeepSeek-V3.2"
+    llm_api_key: str = "test_deepseek"
+    # llm_model: str = "GLM-4.7"
+    # llm_api_key: str = "test_glm"
 
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-reasoner"

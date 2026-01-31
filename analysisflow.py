@@ -291,11 +291,20 @@ class AnalysisFlow:
             'recommendation': '投资建议',
             'action': '交易指令',
             'predicted_price': '预期目标价',
-            'predicted_buy_price': '建议买入价',
-            'predicted_sell_price': '建议卖出价',
+            'predicted_buy_price': '建议买入价格',
+            'predicted_sell_price': '建议卖出价格',
             'confidence': '信心值',
             'risk_warning': '风险提示'
         }
+        
+        # 确保所有列都存在且顺序一致
+        for col in column_mapping.keys():
+            if col not in df.columns:
+                df[col] = ""
+        
+        # 按照映射顺序重排
+        df = df[list(column_mapping.keys())]
+        
         df.rename(columns=column_mapping, inplace=True)
         
         df.to_excel(filepath, index=False)
