@@ -100,79 +100,50 @@ class Analysis:
         }
 
     def _build_human_prompt(self, stock_data, stock_info, history_data, current_data, indicators, factor_158):
-        """构建分析提示词"""
-
-        # 将历史数据转换为Markdown表格，提高模型阅读准确性
-        history_table = "| 日期 | 开盘 | 最高 | 最低 | 收盘 | 涨跌幅 | 成交量 | 换手率 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
-        # 取最近60天的历史数据，提供更丰富的趋势背景
-        for d in history_data[:60]:
-            turn_str = f"{d.get('turn', 0)}%" if d.get('turn') else "N/A"
-            history_table += f"| {d['date']} | {d['open']} | {d['high']} | {d['low']} | {round(d['close'], 2)} | {d['pctChg']}% | {d['volume']} | {turn_str} |\n"
+        """构建精简版分析提示词"""
+        # 仅保留最近20天核心数据，移除冗余列以压缩token
+        history_table = "| 日期 | 收盘 | 涨跌 | 成交量 |\n| :--- | :--- | :--- | :--- |\n"
+        for d in history_data[:20]:
+            history_table += f"| {d['date']} | {round(d['close'], 2)} | {d['pctChg']}% | {d['volume']} |\n"
 
         prompt = f"""
-        你是一位拥有20年实战经验的金牌股票交易员。请根据以下详细的**真实数据**，对股票 {stock_data.get('name', '')} ({stock_data.get('code', '')}) 进行深入的T+1交易机会分析。
+请作为资深交易员，分析 {stock_data.get('name')} ({stock_data.get('code')}) 的T+1机会。
 
-        ### ⚠️ 重要指令：
-        1. **严禁幻觉**：仅使用下方提供的数据进行分析。如果数据中没有提到的信息，请不要自行编造。
-        2. **数据核对**：在给出建议价格前，请务必核对历史最高价、最低价和当前价格，确保建议价格在合理逻辑范围内。
-        3. **逻辑严密**：分析过程应直接引用数据指标。
-
-        ### 1. 基本面背景
-        - 行业: {stock_info.get('sector', '') if stock_info else '未知'}
-        - 市盈率(PE): {current_data.get('pe_ratio', 0)}
-        - 市净率(PB): {current_data.get('pb_ratio', 0)}
-
-        ### 2. 实时行情
-        - 当前价格: {current_data.get('current_price', 0)}
-        - 今日涨跌幅: {current_data.get('change_percent', 0)}%
-        - 成交量: {current_data.get('volume_hand', 0)}手
-        - 换手率: {current_data.get('turnover_rate', 0)}
-
-        ### 3. 技术指标 (当前)
-        - 均线系统: MA5={indicators.get('ma5', 'N/A')}, MA10={indicators.get('ma10', 'N/A')}, MA20={indicators.get('ma20', 'N/A')}, MA60={indicators.get('ma60', 'N/A')}
-        - 成交量均线: VMA5={indicators.get('vma5', 'N/A')}, VMA10={indicators.get('vma10', 'N/A')}
-        - 强弱指标: RSI(14)={indicators.get('rsi', 'N/A')}
-        - 趋势指标: MACD(DIF={indicators.get('macd', 'N/A')}, DEA={indicators.get('macd_signal', 'N/A')}, HIST={indicators.get('macd_hist', 'N/A')})
-        - 超买超卖: KDJ(K={indicators.get('kdj_k', 'N/A')}, D={indicators.get('kdj_d', 'N/A')}, J={indicators.get('kdj_j', 'N/A')})
-        - 布林带: 上轨={indicators.get('bb_upper', 'N/A')}, 下轨={indicators.get('bb_lower', 'N/A')}
-        - 量比 (今日成交量/VMA5): {indicators.get('volume_ratio', 'N/A')}
-        - 价格位置: {"股价在MA5之上" if indicators.get('is_above_ma5') else "股价在MA5之下" if indicators.get('is_above_ma5') is not None else "位置待定(MA5未生成)"}, {"股价在MA60之上" if indicators.get('is_above_ma60') else "股价在MA60之下" if indicators.get('is_above_ma60') is not None else "位置待定(MA60未生成)"}
-        """
+数据：
+- 行业: {stock_info.get('sector', '未知')} | PE: {current_data.get('pe_ratio', 0)}
+- 价格: {current_data.get('current_price')} ({current_data.get('change_percent')}% )
+- 均线: MA5:{indicators.get('ma5')}, MA20:{indicators.get('ma20')}, MA60:{indicators.get('ma60')}
+- 指标: MACD:{indicators.get('macd_hist')}, RSI:{indicators.get('rsi')}, KDJ:{indicators.get('kdj_j')}
+- 位置: {"MA5之上" if indicators.get('is_above_ma5') else "MA5之下"}, {"MA60之上" if indicators.get('is_above_ma60') else "MA60之下"}
+- 量比: {indicators.get('volume_ratio')}
+"""
         if settings.enable_factor_analysis:
-            prompt += f"\n        - 智能预测因子 (Alpha158): {factor_158:.4f} (该值基于量价多因子模型计算，越高通常代表短期看涨信号越强)\n"
+            prompt += f"- 预测因子: {factor_158:.4f}\n"
 
         prompt += f"""
-        ### 4. 最近60个交易日历史走势
-        {history_table}
+最近20日走势：
+{history_table}
 
-        ### 5. 分析要求
-        请从以下维度进行专业研判：
-        1. **思维链分析**：在输出结论前，先在心中或 `thought_process` 字段中梳理：大盘背景（如有）->均线系统->震荡指标状态->形态识别->风险/收益比。
-        2. **趋势分析**：结合均线系统（MA5/MA20/MA60的多头或空头排列）与近60日量价走势，判断当前是处于上涨通道、下跌通道还是震荡筑底。
-        3. **技术面共振**：结合 RSI、MACD、KDJ 等指标看是否存在背离、金叉/死叉或超买超卖状态。
-        4. **最终决策**：综合Alpha158因子与技术面共振情况，给出T+1日的交易建议。
-
-        ### 6. 输出格式
-        请严格按以下JSON格式返回，不要有任何多余的文字说明：
-        {{
-          "stock_code": "{stock_data.get('code', '')}",
-          "stock_name": "{stock_data.get('name', '')}",
-          "current_price": {current_data.get('current_price', 0)},
-          "thought_process": "此处记录你的详细推理过程，确保逻辑推导自上方数据，无编造内容",
-          "analysis": "详细的分析结论摘要",
-          "trend": "上涨/下跌/震荡",
-          "support": "支撑位价格",
-          "resistance": "压力位价格",
-          "recommendation": "买入/卖出/观望",
-          "action": "详细的交易指令（需包含股票名称和代码，并提供具体的操作逻辑）",
-          "predicted_price": "T+1预期目标价",
-          "predicted_buy_price": "建议买入入场价",
-          "predicted_sell_price": "建议止盈/止损出场价",
-          "confidence": 0.0-1.0之间的信心值,
-          "risk_warning": "核心风险提示"
-        }}
-        """
-        return prompt
+要求：按JSON输出分析结果：
+{{
+  "stock_code": "{stock_data.get('code')}",
+  "stock_name": "{stock_data.get('name')}",
+  "current_price": {current_data.get('current_price', 0)},
+  "thought_process": "简述趋势、指标及量价逻辑",
+  "analysis": "核心结论",
+  "trend": "趋势状态",
+  "support": "支撑位",
+  "resistance": "压力位",
+  "recommendation": "买入/观望/卖出",
+  "action": "交易指令",
+  "predicted_price": "目标价",
+  "predicted_buy_price": "入场价",
+  "predicted_sell_price": "止损价",
+  "confidence": 0-1之间数值,
+  "risk_warning": "风险"
+}}
+"""
+        return prompt.strip()
 
     def _save_to_excel(self, data, filename, append=False):
         """将分析结果写入Excel"""
@@ -235,6 +206,29 @@ class Analysis:
         print(f"分析结果已保存至: {filepath}")
         return filepath
 
+    def _is_promising(self, indicators, factor_158):
+        """
+        预筛选逻辑：判断股票是否值得调用 LLM 分析。
+        """
+        if not indicators:
+            return False
+            
+        # 1. 如果 Alpha158 因子极低（例如小于 -0.5），通常短期走势极弱
+        if factor_158 < -0.5:
+            return False
+            
+        # 2. 强空头排列：MA5 < MA20 < MA60 且价格在 MA5 之下，且 MA5 还在向下
+        ma5 = indicators.get('ma5', 0)
+        ma20 = indicators.get('ma20', 0)
+        ma60 = indicators.get('ma60', 0)
+        
+        if ma5 < ma20 < ma60 and not indicators.get('is_above_ma5'):
+            # 如果 MACD 还在放绿柱，说明跌势未止
+            if indicators.get('macd_hist', 0) < 0:
+                return False
+                
+        return True
+
     def analysis_stock(self, stock_code, save_to_file=True):
         agent = Agent()
         llm = agent.get_agent()
@@ -256,65 +250,76 @@ class Analysis:
             factor_158_dict = database.get_factor_158([stock_code])
             factor_158 = factor_158_dict.get(stock_code, 0.0)
 
+        # 增加预筛选逻辑，节省 Token 和时间
+        if not self._is_promising(indicators, factor_158):
+            print(f"股票 {stock_code} 趋势过弱或因子评分过低，跳过 LLM 分析。")
+            result_dict = {
+                'stock_code': stock_code,
+                'stock_name': stock_data.get('name', '未知'),
+                'analysis_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'current_price': current_data.get('current_price', 0) if current_data else 0,
+                'alpha158': factor_158,
+                'recommendation': '观望',
+                'trend': '下跌/空头',
+                'thought_process': '预筛选机制拦截：指标显示强空头排列或 Alpha158 因子评分极低，暂无参与价值。',
+                'action': '保持观望，等待趋势反转或缩量筑底。',
+                'confidence': 0.1
+            }
+            if save_to_file:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"analysis_{stock_code}_{timestamp}.xlsx"
+                self._save_to_excel(result_dict, filename)
+            return result_dict
+
         human_prompt = self._build_human_prompt(stock_data, stock_data, history_data, current_data, indicators, factor_158)
 
-        final_result = ""
-        for chunk in llm.stream(
-            {"messages": [{"role": "user", "content": human_prompt}]},
-            stream_mode="updates"
-        ):
-            for step, data in chunk.items():
-                # 根据原有逻辑提取文本
-                try:
-                    text = data['messages'][-1].content_blocks[-1]['text']
-                    final_result = text
-                    print(text)
-                except (AttributeError, KeyError, IndexError):
-                    # 备用方案：如果结构不同，尝试获取 content
-                    if hasattr(data['messages'][-1], 'content'):
-                        final_result = data['messages'][-1].content
-                        print(final_result)
+        print(f"正在分析 {stock_code}...")
+        try:
+            response = llm.invoke({"messages": [{"role": "user", "content": human_prompt}]})
+            
+            # 处理结果
+            if isinstance(response, dict) and 'messages' in response:
+                final_result = response['messages'][-1].content
+            else:
+                final_result = response.content if hasattr(response, 'content') else str(response)
 
-        # 尝试解析JSON并保存
-        if final_result:
-            try:
-                # 处理可能存在的 markdown 代码块标记
-                clean_result = final_result.strip()
-                if clean_result.startswith("```json"):
-                    clean_result = clean_result[7:]
-                elif clean_result.startswith("```"):
-                    clean_result = clean_result[3:]
-                if clean_result.endswith("```"):
-                    clean_result = clean_result[:-3]
-                clean_result = clean_result.strip()
+            # 尝试解析 JSON
+            clean_result = final_result.strip()
+            if clean_result.startswith("```json"):
+                clean_result = clean_result[7:]
+            elif clean_result.startswith("```"):
+                clean_result = clean_result[3:]
+            if clean_result.endswith("```"):
+                clean_result = clean_result[:-3]
+            clean_result = clean_result.strip()
 
-                result_dict = json.loads(clean_result)
-                
-                # 重新构建字典以确保顺序：股票代码和名称排在最前面
-                ordered_result = {
-                    'stock_code': stock_code,
-                    'stock_name': stock_data.get('name', '未知'),
-                    'analysis_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    'current_price': current_data.get('current_price', 0),
-                    'alpha158': factor_158
-                }
-                # 将 LLM 返回的结果合并进来（排除掉可能重复的 key）
-                for key, value in result_dict.items():
-                    if key not in ordered_result:
-                        ordered_result[key] = value
-                
-                result_dict = ordered_result
+            result_dict = json.loads(clean_result)
+            
+            # 重新构建字典以确保顺序
+            ordered_result = {
+                'stock_code': stock_code,
+                'stock_name': stock_data.get('name', '未知'),
+                'analysis_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'current_price': current_data.get('current_price', 0) if current_data else 0,
+                'alpha158': factor_158
+            }
+            # 合并 LLM 结果
+            for key, value in result_dict.items():
+                if key not in ordered_result:
+                    ordered_result[key] = value
+            
+            result_dict = ordered_result
 
-                if save_to_file:
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"analysis_{stock_code}_{timestamp}.xlsx"
-                    self._save_to_excel(result_dict, filename)
-                return result_dict
-            except Exception as e:
-                print(f"解析或保存结果失败: {e}")
-                print(f"原始结果: {final_result}")
-                return None
-        return None
+            if save_to_file:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"analysis_{stock_code}_{timestamp}.xlsx"
+                self._save_to_excel(result_dict, filename)
+            
+            return result_dict
+
+        except Exception as e:
+            print(f"分析股票 {stock_code} 失败: {e}")
+            return None
     
     def batch_analysis(self, max_workers=5):
         """批量分析所有股票，多线程执行"""
@@ -355,4 +360,25 @@ class Analysis:
             print("批量分析完成，但未获取到任何有效结果。")
         
         print(f"整个过程分析完成，总耗时: {duration:.2f} 秒 (约 {duration/60:.2f} 分钟)")
+        print(f"完整分析结果已保存至: output/{filename}")
+
+        if valid_results:
+            # 重新按信心值排序并覆盖保存一次完整版
+            valid_results.sort(key=lambda x: x.get('confidence', 0), reverse=True)
+            self._save_to_excel(valid_results, filename, append=False)
+            
+            # 筛选建议买入的股票
+            buy_stocks = [r for r in valid_results if r.get('recommendation') and '买入' in str(r.get('recommendation'))]
+            
+            if buy_stocks:
+                print(f"\n=== 发现建议买入的精选股票 ({len(buy_stocks)} 只) ===")
+                for stock in buy_stocks:
+                    print(f"代码: {stock.get('stock_code')} | 名称: {stock.get('stock_name')} | 建议: {stock.get('recommendation')} | 信心值: {stock.get('confidence')}")
+                
+                # 保存筛选后的结果到单独的 Excel
+                selected_filename = f"selected_analysis_{timestamp}.xlsx"
+                self._save_to_excel(buy_stocks, selected_filename)
+                print(f"精选股票已保存至: output/{selected_filename}")
+            else:
+                print("\n本次分析未发现明确建议买入的股票。")
 

@@ -40,22 +40,18 @@ class AnalysisFlow:
         real_time_data = state.get('real_time_data', {})
         
         prompt = f"""
-        你是一位金牌股票基本面分析师。请根据以下信息对股票 {stock_info.get('name')} ({state['stock_code']}) 进行基本面分析。
-        
-        ### 股票信息
-        - 行业: {stock_info.get('sector', '未知')}
-        - 业务描述: {stock_info.get('description', '暂无')}
-        
-        ### 实时财务数据
-        - 市盈率(PE): {real_time_data.get('pe_ratio', 'N/A')}
-        - 市净率(PB): {real_time_data.get('pb_ratio', 'N/A')}
-        
-        请分析该公司的行业地位、估值水平以及潜在的基本面风险或机会。
-        你的分析应专业、客观。
-        """
+请分析 {stock_info.get('name')} ({state['stock_code']}) 基本面。
+
+数据：
+- 行业: {stock_info.get('sector', '未知')}
+- PE: {real_time_data.get('pe_ratio', 'N/A')} | PB: {real_time_data.get('pb_ratio', 'N/A')}
+- 业务: {stock_info.get('description', '暂无')}
+
+分析其行业地位、估值及风险。
+"""
         
         messages = [
-            SystemMessage(content="你是一位拥有20年从业经验的金牌股票基本面分析师，擅长从宏观经济、行业趋势和公司财务状况中挖掘投资价值。"),
+            SystemMessage(content="你是一位资深基本面分析师。"),
             HumanMessage(content=prompt)
         ]
         
@@ -69,33 +65,28 @@ class AnalysisFlow:
         indicators = state.get('indicators', {})
         alpha158 = state.get('alpha158', 0.0)
         
+        # 精简历史数据：展示最近20天核心列
         history_list = []
-        # 展示最近30天
-        for d in history_data[:30]:
-            turn_str = f"{d.get('turn', 0)}%" if d.get('turn') else "N/A"
+        for d in history_data[:20]:
             history_list.append(
-                f"{d['date']}: 开盘={d['open']}, 最高={d['high']}, 最低={d['low']}, 收盘={round(d['close'], 2)}, "
-                f"涨跌幅={d['pctChg']}%, 成交量={d['volume']}, 换手率={turn_str}"
+                f"{d['date']}: 收盘={round(d['close'], 2)}, 涨跌={d['pctChg']}%, 量={d['volume']}"
             )
         history_summary = "\n".join(history_list)
         
         prompt = f"""
-        你是一位金牌资深股票数据分析师。请根据以下历史数据和技术指标对股票 {state['stock_code']} 进行量价分析和技术面研判。
-        
-        ### 技术指标
-        - 均线系统: MA5={indicators.get('ma5', 'N/A')}, MA10={indicators.get('ma10', 'N/A')}, MA20={indicators.get('ma20', 'N/A')}
-        - 成交量均线: VMA5={indicators.get('vma5', 'N/A')}, VMA10={indicators.get('vma10', 'N/A')}
-        - 量比: {indicators.get('volume_ratio', 'N/A')}
-        - 智能预测因子 (Alpha158): {alpha158:.4f} (基于量价多因子模型，正值越大代表短期看涨信号越强)
-        
-        ### 最近30个交易日历史走势
-        {history_summary}
-        
-        请分析当前价格趋势（上涨/下跌/震荡）、量价关系是否健康、支撑压力位以及Alpha158因子传达的信号。
-        """
+请作为资深分析师分析 {state['stock_code']} 的技术面。
+
+数据：
+- 均线: MA5:{indicators.get('ma5')}, MA10:{indicators.get('ma10')}, MA20:{indicators.get('ma20')}
+- 指标: 量比:{indicators.get('volume_ratio')}, Alpha158:{alpha158:.4f}
+- 最近20日走势：
+{history_summary}
+
+请分析趋势、量价及Alpha158信号。
+"""
         
         messages = [
-            SystemMessage(content="你是一位金牌资深股票数据分析师，精通各类量化指标和技术分析手段，擅长通过数据洞察市场情绪和趋势。"),
+            SystemMessage(content="你是一位金牌资深股票数据分析师。"),
             HumanMessage(content=prompt)
         ]
         
@@ -112,54 +103,37 @@ class AnalysisFlow:
         alpha158 = state.get('alpha158', 0.0)
         
         prompt = f"""
-        你是一位金牌资深股票交易员。请结合以下基本面分析和技术面分析，对股票 {stock_info.get('name')} ({state['stock_code']}) 做出最终的交易判断。
-        
-        ### 1. 基本面分析结论
-        {fundamental_analysis}
-        
-        ### 2. 技术面分析结论
-        {technical_analysis}
-        
-        ### 3. 实时行情
-        - 当前价格: {real_time_data.get('current_price', 0)}
-        - 今日涨跌幅: {real_time_data.get('change_percent', 0)}%
-"""
-        if settings.enable_factor_analysis:
-            prompt += f"        - 智能预测因子 (Alpha158): {alpha158:.4f}\n"
+请作为资深交易员整合分析 {stock_info.get('name')} ({state['stock_code']}) 并输出结论。
 
-        prompt += f"""
-        ### 任务
-        请综合多方因素，给出最终的交易建议和价格预测。**交易指令(action)应当包含股票名称和代码，且描述应具体详尽，包含具体的操作动作、仓位建议或关键触发条件。**
-"""
-        if settings.enable_factor_analysis:
-            prompt = prompt.replace("综合多方因素", "综合多方因素（包括Alpha158因子结论）")
+基本面：{fundamental_analysis}
+技术面：{technical_analysis}
+价格：{real_time_data.get('current_price')} ({real_time_data.get('change_percent')}%)
+Alpha158: {alpha158:.4f}
 
-        prompt += f"""
-        请严格按以下JSON格式返回，不要有任何多余的文字说明：
-        {{
-          "stock_code": "{state['stock_code']}",
-          "stock_name": "{stock_info.get('name')}",
-          "current_price": {real_time_data.get('current_price', 0)},
-          "analysis": "最终整合分析结论",
-          "trend": "上涨/下跌/震荡",
-          "support": "支撑位价格",
-          "resistance": "压力位价格",
-          "recommendation": "买入/卖出/观望",
-          "action": "详细的交易指令（需包含股票名称和代码，并提供具体的操作逻辑）",
-          "predicted_price": "预期目标价",
-          "predicted_buy_price": "建议买入价",
-          "predicted_sell_price": "建议止盈/止损价",
-          "confidence": 0.85,
-          "risk_warning": "核心风险提示"
-        }}
-        """
-        
+按JSON输出：
+{{
+  "stock_code": "{state['stock_code']}",
+  "stock_name": "{stock_info.get('name')}",
+  "current_price": {real_time_data.get('current_price', 0)},
+  "analysis": "整合结论",
+  "trend": "趋势",
+  "support": "支撑位",
+  "resistance": "压力位",
+  "recommendation": "买入/观望/卖出",
+  "action": "具体交易指令",
+  "predicted_price": "目标价",
+  "predicted_buy_price": "入场价",
+  "predicted_sell_price": "止损价",
+  "confidence": 0-1,
+  "risk_warning": "风险"
+}}
+"""
         messages = [
-            SystemMessage(content="你是一位拥有20年实战经验的金牌资深股票交易员，擅长权衡风险与收益。你负责整合分析师的意见并给出最终可执行的建议。"),
+            SystemMessage(content="你是一位资深交易员。"),
             HumanMessage(content=prompt)
         ]
         
-        print(f"[{state['stock_code']}] 交易员正在做决策...")
+        print(f"[{state['stock_code']}] 交易员正在决策...")
         response = self.llm.invoke(messages)
         
         # 解析 JSON
@@ -190,15 +164,43 @@ class AnalysisFlow:
         df['ma5'] = df['close'].rolling(window=5).mean()
         df['ma10'] = df['close'].rolling(window=10).mean()
         df['ma20'] = df['close'].rolling(window=20).mean()
+        df['ma60'] = df['close'].rolling(window=60).mean() if len(df) >= 60 else df['close'].rolling(window=len(df)).mean()
         df['vma5'] = df['volume'].rolling(window=5).mean()
+        
+        # 计算 MACD
+        df['ema12'] = df['close'].ewm(span=12, adjust=False).mean()
+        df['ema26'] = df['close'].ewm(span=26, adjust=False).mean()
+        df['dif'] = df['ema12'] - df['ema26']
+        df['dea'] = df['dif'].ewm(span=9, adjust=False).mean()
+        df['macd_hist'] = (df['dif'] - df['dea']) * 2
+
         latest = df.iloc[-1]
         return {
             'ma5': round(float(latest['ma5']), 2) if not pd.isna(latest.get('ma5')) else 0,
             'ma10': round(float(latest['ma10']), 2) if not pd.isna(latest.get('ma10')) else 0,
             'ma20': round(float(latest['ma20']), 2) if not pd.isna(latest.get('ma20')) else 0,
+            'ma60': round(float(latest['ma60']), 2) if not pd.isna(latest.get('ma60')) else 0,
+            'macd_hist': round(float(latest['macd_hist']), 2) if not pd.isna(latest.get('macd_hist')) else 0,
             'vma5': round(float(latest['vma5']), 0) if not pd.isna(latest.get('vma5')) else 0,
-            'volume_ratio': round(float(latest['volume'] / latest['vma5']), 2) if not pd.isna(latest.get('vma5')) and latest['vma5'] > 0 else 0
+            'volume_ratio': round(float(latest['volume'] / latest['vma5']), 2) if not pd.isna(latest.get('vma5')) and latest['vma5'] > 0 else 0,
+            'current_price': round(float(latest['close']), 2)
         }
+
+    def _is_promising(self, indicators, alpha158):
+        """预筛选逻辑"""
+        if not indicators: return False
+        if alpha158 < -0.5: return False
+        
+        ma5 = indicators.get('ma5', 0)
+        ma20 = indicators.get('ma20', 0)
+        ma60 = indicators.get('ma60', 0)
+        curr = indicators.get('current_price', 0)
+        
+        # 强空头排列且价格在下方
+        if ma5 < ma20 < ma60 and curr < ma5:
+            if indicators.get('macd_hist', 0) < 0:
+                return False
+        return True
 
     def build_graph(self):
         workflow = StateGraph(AgentState)
@@ -235,6 +237,24 @@ class AnalysisFlow:
             alpha158_dict = self.db.get_factor_158([stock_code])
             alpha158 = alpha158_dict.get(stock_code, 0.0)
         
+        # 预筛选
+        if not self._is_promising(indicators, alpha158):
+            print(f"[{stock_code}] 预筛选未通过，跳过流程。")
+            result = {
+                "stock_code": stock_code,
+                "stock_name": stock_info.get('name', '未知'),
+                "current_price": real_time_data.get('current_price', 0) if real_time_data else 0,
+                "recommendation": "观望",
+                "trend": "空头/下跌",
+                "analysis": "预筛选拦截：技术指标显示强空头或因子分过低，目前无参与价值。",
+                "action": "观望",
+                "confidence": 0.1,
+                "analysis_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "alpha158": alpha158
+            }
+            self._save(result)
+            return result
+
         initial_state = {
             "stock_code": stock_code,
             "stock_info": stock_info,
