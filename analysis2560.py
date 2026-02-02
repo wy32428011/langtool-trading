@@ -79,12 +79,14 @@ class Analysis2560:
 要求：
 1. 价格预测（建议买入价、建议卖出价/止损价）必须基于25日/60日均线及近期高低点给出精确数值，不得模糊。
 2. 必须包含对未来一周（5个交易日）的具体走势预判逻辑。
-3. 结合2560逻辑，严格按以下JSON输出：
+3. 在得出结论前，必须包含“自我辩驳”环节：针对你给出的2560战法研判，寻找至少一个可能的失效点（如：虚假金叉、量能不足或大盘环境制约）。
+4. 结合2560逻辑，严格按以下JSON输出：
 {{
   "stock_code": "{stock_data.get('code')}",
   "stock_name": "{stock_data.get('name')}",
   "current_price": {current_data.get('current_price', 0)},
   "thought_process": "简述MA60斜率、MA25位置及量价关系",
+  "self_rebuttal": "自我辩驳：寻找2560逻辑下的反向证据或潜在失效点",
   "strategy_analysis": "2560战法要点总结",
   "ma_trend": "均线趋势",
   "weekly_outlook": "未来一周（5个交易日）走势预测及逻辑",
@@ -117,6 +119,7 @@ class Analysis2560:
             'current_price': '当前价格',
             'ma_trend': '均线趋势',
             'thought_process': '推理过程',
+            'self_rebuttal': '自我辩驳',
             'strategy_analysis': '2560战法分析',
             'weekly_outlook': '周度展望',
             'support': '支撑位',

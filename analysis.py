@@ -128,12 +128,14 @@ class Analysis:
 要求：
 1. 价格预测（目标价、入场价、止损价）必须基于上述技术指标和波段高低点给出精确的数值点位，严禁给出“XX元附近”等模糊表述。
 2. 必须包含对未来一周（5个交易日）的走势预判逻辑。
-3. 严格按以下JSON格式输出分析结果：
+3. 在得出结论前，必须包含“自我辩驳”环节：针对你给出的主要趋势研判，寻找至少一个反向证据或潜在失效场景。
+4. 严格按以下JSON格式输出分析结果：
 {{
   "stock_code": "{stock_data.get('code')}",
   "stock_name": "{stock_data.get('name')}",
   "current_price": {current_data.get('current_price', 0)},
   "thought_process": "简述趋势、指标及量价逻辑",
+  "self_rebuttal": "自我辩驳：寻找反向证据或潜在失效逻辑",
   "analysis": "核心结论",
   "trend": "趋势状态",
   "weekly_outlook": "对未来一周（5个交易日）的具体走势预测及逻辑",
@@ -168,6 +170,7 @@ class Analysis:
             'current_price': '当前价格',
             'alpha158': 'Alpha158因子',
             'thought_process': '推理过程',
+            'self_rebuttal': '自我辩驳',
             'analysis': '详细结论',
             'trend': '趋势判断',
             'weekly_outlook': '周度展望',
@@ -288,7 +291,7 @@ class Analysis:
                 final_result = response['messages'][-1].content
             else:
                 final_result = response.content if hasattr(response, 'content') else str(response)
-
+            print(final_result)
             # 尝试解析 JSON
             clean_result = final_result.strip()
             if clean_result.startswith("```json"):

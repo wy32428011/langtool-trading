@@ -115,11 +115,14 @@ class AnalysisFlow:
 要求：
 1. 价格预测（目标价、入场价、止损价）必须基于技术面提供的支撑压力位给出精确数值，不得使用模糊区间。
 2. 必须包含对未来一周（5个交易日）的具体走势预判及逻辑支撑。
-3. 严格按以下JSON格式输出：
+3. 在得出结论前，必须包含“自我辩驳”环节：整合基本面和技术面的冲突点（如：基本面好但技术面弱，或反之），并寻找结论可能失效的风险证据。
+4. 严格按以下JSON格式输出：
 {{
   "stock_code": "{state['stock_code']}",
   "stock_name": "{stock_info.get('name')}",
   "current_price": {real_time_data.get('current_price', 0)},
+  "thought_process": "深度思考：整合各方观点，并进行自我辩驳的过程",
+  "self_rebuttal": "自我辩驳：寻找反向证据或潜在失效逻辑",
   "analysis": "整合结论",
   "trend": "趋势",
   "weekly_outlook": "未来一周（5个交易日）走势预测及逻辑",
@@ -310,6 +313,8 @@ class AnalysisFlow:
             'alpha158': 'Alpha158因子',
             'fundamental_analysis': '基本面分析结论',
             'technical_analysis': '技术面分析结论',
+            'thought_process': '推理过程',
+            'self_rebuttal': '自我辩驳',
             'analysis': '整合交易结论',
             'trend': '趋势',
             'weekly_outlook': '周度展望',
