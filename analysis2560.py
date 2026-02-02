@@ -60,9 +60,10 @@ class Analysis2560:
             history_table += f"| {d['date']} | {round(d['close'], 2)} | {d['pctChg']}% | {d['volume']} |\n"
 
         prompt = f"""
-请作为2560战法专家，分析 {stock_data.get('name')} ({stock_data.get('code')})。
+请作为2560战法专家，对 {stock_data.get('name')} ({stock_data.get('code')}) 进行深度研判。
+你需要给出基于2560逻辑的 T+1 交易机会分析以及未来一周（5个交易日）的行情走势预测。
 
-核心原则：MA60(生命线)需走平或向上；MA25(工作线)向上是买号；股价在均线上方强势；回踩缩量是买点。
+2560核心原则：MA60(生命线)需走平或向上；MA25(工作线)向上是买号；股价在均线上方强势；回踩缩量是买点。
 
 数据：
 - 行业: {stock_info.get('sector', '未知')} | PE: {current_data.get('pe_ratio', 0)}
@@ -75,7 +76,10 @@ class Analysis2560:
 最近20日走势：
 {history_table}
 
-要求：结合2560逻辑，按JSON输出：
+要求：
+1. 价格预测（建议买入价、建议卖出价/止损价）必须基于25日/60日均线及近期高低点给出精确数值，不得模糊。
+2. 必须包含对未来一周（5个交易日）的具体走势预判逻辑。
+3. 结合2560逻辑，严格按以下JSON输出：
 {{
   "stock_code": "{stock_data.get('code')}",
   "stock_name": "{stock_data.get('name')}",
@@ -83,14 +87,15 @@ class Analysis2560:
   "thought_process": "简述MA60斜率、MA25位置及量价关系",
   "strategy_analysis": "2560战法要点总结",
   "ma_trend": "均线趋势",
-  "support": "支撑位",
-  "resistance": "压力位",
-  "suggested_buy_price": "建议买入价",
-  "suggested_sell_price": "止损价",
+  "weekly_outlook": "未来一周（5个交易日）走势预测及逻辑",
+  "support": "支撑位数值",
+  "resistance": "压力位数值",
+  "suggested_buy_price": 具体的建议买入价数值,
+  "suggested_sell_price": 具体的建议止损价数值,
   "recommendation": "买入/观望/卖出",
   "action": "交易指令",
   "confidence": 0-1之间数值,
-  "risk_warning": "风险"
+  "risk_warning": "风险点"
 }}
 """
         return prompt.strip()
@@ -113,6 +118,7 @@ class Analysis2560:
             'ma_trend': '均线趋势',
             'thought_process': '推理过程',
             'strategy_analysis': '2560战法分析',
+            'weekly_outlook': '周度展望',
             'support': '支撑位',
             'resistance': '压力位',
             'suggested_buy_price': '建议买入价格',
