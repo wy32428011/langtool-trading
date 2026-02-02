@@ -103,29 +103,35 @@ class AnalysisFlow:
         alpha158 = state.get('alpha158', 0.0)
         
         prompt = f"""
-请作为资深交易员整合分析 {stock_info.get('name')} ({state['stock_code']}) 并输出结论。
+请作为资深交易员，整合基本面和技术面分析结论，对 {stock_info.get('name')} ({state['stock_code']}) 进行最终研判。
+你需要给出 T+1 交易指令以及未来一周（5个交易日）的行情走势预测。
 
-基本面：{fundamental_analysis}
-技术面：{technical_analysis}
-价格：{real_time_data.get('current_price')} ({real_time_data.get('change_percent')}%)
-Alpha158: {alpha158:.4f}
+数据：
+- 基本面：{fundamental_analysis}
+- 技术面：{technical_analysis}
+- 价格：{real_time_data.get('current_price')} ({real_time_data.get('change_percent')}%)
+- Alpha158: {alpha158:.4f}
 
-按JSON输出：
+要求：
+1. 价格预测（目标价、入场价、止损价）必须基于技术面提供的支撑压力位给出精确数值，不得使用模糊区间。
+2. 必须包含对未来一周（5个交易日）的具体走势预判及逻辑支撑。
+3. 严格按以下JSON格式输出：
 {{
   "stock_code": "{state['stock_code']}",
   "stock_name": "{stock_info.get('name')}",
   "current_price": {real_time_data.get('current_price', 0)},
   "analysis": "整合结论",
   "trend": "趋势",
-  "support": "支撑位",
-  "resistance": "压力位",
+  "weekly_outlook": "未来一周（5个交易日）走势预测及逻辑",
+  "support": "支撑位数值",
+  "resistance": "压力位数值",
   "recommendation": "买入/观望/卖出",
   "action": "具体交易指令",
-  "predicted_price": "目标价",
-  "predicted_buy_price": "入场价",
-  "predicted_sell_price": "止损价",
+  "predicted_price": 具体的预期目标价数值,
+  "predicted_buy_price": 具体的建议买入价数值,
+  "predicted_sell_price": 具体的建议止损价数值,
   "confidence": 0-1,
-  "risk_warning": "风险"
+  "risk_warning": "风险点"
 }}
 """
         messages = [
@@ -306,6 +312,7 @@ Alpha158: {alpha158:.4f}
             'technical_analysis': '技术面分析结论',
             'analysis': '整合交易结论',
             'trend': '趋势',
+            'weekly_outlook': '周度展望',
             'support': '支撑位',
             'resistance': '压力位',
             'recommendation': '投资建议',

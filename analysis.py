@@ -107,7 +107,8 @@ class Analysis:
             history_table += f"| {d['date']} | {round(d['close'], 2)} | {d['pctChg']}% | {d['volume']} |\n"
 
         prompt = f"""
-请作为资深交易员，分析 {stock_data.get('name')} ({stock_data.get('code')}) 的T+1机会。
+请作为资深交易员，对 {stock_data.get('name')} ({stock_data.get('code')}) 进行深度研判。
+你需要给出 T+1 交易机会分析以及未来一周（5个交易日）的行情走势预测。
 
 数据：
 - 行业: {stock_info.get('sector', '未知')} | PE: {current_data.get('pe_ratio', 0)}
@@ -124,7 +125,10 @@ class Analysis:
 最近20日走势：
 {history_table}
 
-要求：按JSON输出分析结果：
+要求：
+1. 价格预测（目标价、入场价、止损价）必须基于上述技术指标和波段高低点给出精确的数值点位，严禁给出“XX元附近”等模糊表述。
+2. 必须包含对未来一周（5个交易日）的走势预判逻辑。
+3. 严格按以下JSON格式输出分析结果：
 {{
   "stock_code": "{stock_data.get('code')}",
   "stock_name": "{stock_data.get('name')}",
@@ -132,15 +136,16 @@ class Analysis:
   "thought_process": "简述趋势、指标及量价逻辑",
   "analysis": "核心结论",
   "trend": "趋势状态",
-  "support": "支撑位",
-  "resistance": "压力位",
+  "weekly_outlook": "对未来一周（5个交易日）的具体走势预测及逻辑",
+  "support": "支撑位数值",
+  "resistance": "压力位数值",
   "recommendation": "买入/观望/卖出",
   "action": "交易指令",
-  "predicted_price": "目标价",
-  "predicted_buy_price": "入场价",
-  "predicted_sell_price": "止损价",
+  "predicted_price": 具体的预期目标价数值,
+  "predicted_buy_price": 具体的建议买入价数值,
+  "predicted_sell_price": 具体的建议止损价数值,
   "confidence": 0-1之间数值,
-  "risk_warning": "风险"
+  "risk_warning": "具体风险点"
 }}
 """
         return prompt.strip()
@@ -165,6 +170,7 @@ class Analysis:
             'thought_process': '推理过程',
             'analysis': '详细结论',
             'trend': '趋势判断',
+            'weekly_outlook': '周度展望',
             'support': '支撑位',
             'resistance': '压力位',
             'recommendation': '投资建议',
