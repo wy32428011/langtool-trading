@@ -335,7 +335,43 @@ class Analysis:
         from concurrent.futures import as_completed
         database = Database()
         stock_codes = database.get_all_stock_codes()
-        print(f"获取到 {len(stock_codes)} 只股票，开始多线程批量分析 (max_workers={max_workers})...")
+        print(f"获取到 {len(stock_codes)} 只股票，开始预筛选...")
+
+        # 预筛选逻辑：不带 "ST" 且价格小于 50
+        filtered_codes = []
+        stock_info_dict = database.get_batch_stock_info(stock_codes)
+        
+        # 限制只处理前 10 个，用于演示/快速过滤测试 (实际使用时应处理全部)
+        # stock_codes = stock_codes[:50] 
+        
+        for code in stock_codes:
+            info = stock_info_dict.get(code)
+            if not info:
+                continue
+            
+            # 1. 股票名中不需要带有 "ST"
+            name = info.get('name', '')
+            if 'ST' in name.upper():
+                print(f"跳过 {code} ({name}): 名称包含 ST")
+                continue
+            
+            # 2. 价格小于 50
+            try:
+                real_time_data = database.get_real_time_data(info.get('full_code', code))
+                if real_time_data:
+                    current_price = real_time_data.get('current_price', 0)
+                    if current_price >= 50:
+                        print(f"跳过 {code} ({name}): 价格 {current_price} >= 50")
+                        continue
+                else:
+                    continue
+            except Exception as e:
+                continue
+            
+            filtered_codes.append(code)
+
+        stock_codes = filtered_codes
+        print(f"预筛选完成，剩余 {len(stock_codes)} 只股票，开始多线程批量分析 (max_workers={max_workers})...")
         
         start_time = time.time()  # 记录开始时间
         
