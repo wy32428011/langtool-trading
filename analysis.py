@@ -330,6 +330,73 @@ class Analysis:
             print(f"分析股票 {stock_code} 失败: {e}")
             return None
     
+    def quick_analysis(self, stock_code, stock_name, current_data, indicators, factor_158):
+        """
+        专为实时分析设计的快速分析方法。
+        跳过数据库查询，直接处理传入的数据，并使用精简版 Prompt。
+        """
+        agent = Agent()
+        llm = agent.get_agent()
+        
+        # 构建一个极简版 Prompt，侧重于实时变动
+        prompt = f"""
+请作为资深实时交易员，对 {stock_name} ({stock_code}) 进行秒级研判。
+当前价格: {current_data.get('current_price')} ({current_data.get('change_percent')}%)
+技术指标: MA5:{indicators.get('ma5')}, MA20:{indicators.get('ma20')}, RSI:{indicators.get('rsi')}, MACD:{indicators.get('macd_hist')}
+量比: {indicators.get('volume_ratio')} | Alpha158: {factor_158:.4f}
+
+要求：
+1. 重点分析当前价格相对于关键均线的动量变化。
+2. 给出此时刻的即时操作建议（买入/卖出/观望）及核心逻辑（60字内）。
+3. 严格按以下 JSON 格式输出：
+{{
+  "recommendation": "买入/观望/卖出",
+  "trend": "简短趋势描述",
+  "action": "具体的即时操作指令",
+  "thought_process": "核心逻辑简述",
+  "confidence": 0-1之间数值
+}}
+"""
+        try:
+            response = llm.invoke({"messages": [{"role": "user", "content": prompt}]})
+            
+            # 处理结果
+            if isinstance(response, dict) and 'messages' in response:
+                final_result = response['messages'][-1].content
+            else:
+                final_result = response.content if hasattr(response, 'content') else str(response)
+            
+            # 解析 JSON
+            clean_result = final_result.strip()
+            if "```json" in clean_result:
+                clean_result = clean_result.split("```json")[1].split("```")[0]
+            elif "```" in clean_result:
+                clean_result = clean_result.split("```")[1].split("```")[0]
+            
+            clean_result = clean_result.strip()
+            result_dict = json.loads(clean_result)
+            
+            # 补全基础字段
+            result_dict['stock_code'] = stock_code
+            result_dict['stock_name'] = stock_name
+            result_dict['analysis_time'] = datetime.now().strftime("%H:%M:%S")
+            result_dict['current_price'] = current_data.get('current_price', 0)
+            result_dict['alpha158'] = factor_158
+            
+            return result_dict
+
+        except Exception as e:
+            # 发生错误时，回退到基本信息
+            return {
+                'stock_code': stock_code,
+                'stock_name': stock_name,
+                'analysis_time': datetime.now().strftime("%H:%M:%S"),
+                'current_price': current_data.get('current_price', 0),
+                'recommendation': '错误',
+                'thought_process': f'分析出错: {str(e)}',
+                'action': '请检查网络或配置'
+            }
+
     def batch_analysis(self, max_workers=5):
         """批量分析所有股票，多线程执行"""
         from concurrent.futures import as_completed
