@@ -102,7 +102,8 @@ def main():
                     print(f"趋势: {result.get('trend')}")
                     print(f"建议: {result.get('recommendation')} (信心: {int(result.get('confidence', 0)*100)}%)")
                     print(f"核心逻辑: {result.get('thought_process')}")
-                    print(f"👉 行动: {result.get('action')}")
+                    print(f"👉 持仓建议: {result.get('hold_suggestion')}")
+                    print(f"👉 空仓建议: {result.get('empty_suggestion')}")
                     print("="*50 + "\n")
                     
                     last_price = curr_price

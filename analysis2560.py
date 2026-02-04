@@ -95,7 +95,8 @@ class Analysis2560:
   "suggested_buy_price": 具体的建议买入价数值,
   "suggested_sell_price": 具体的建议止损价数值,
   "recommendation": "买入/观望/卖出",
-  "action": "交易指令",
+  "hold_suggestion": "针对持仓者的操作建议",
+  "empty_suggestion": "针对空仓者的操作建议",
   "confidence": 0-1之间数值,
   "risk_warning": "风险点"
 }}
@@ -127,7 +128,8 @@ class Analysis2560:
             'suggested_buy_price': '建议买入价格',
             'suggested_sell_price': '建议卖出价格',
             'recommendation': '投资建议',
-            'action': '交易指令',
+            'hold_suggestion': '持仓建议',
+            'empty_suggestion': '空仓建议',
             'confidence': '信心值',
             'risk_warning': '风险提示'
         }
@@ -213,7 +215,8 @@ class Analysis2560:
                 'stock_name': stock_data.get('name', '未知'),
                 'analysis_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'recommendation': '观望',
-                'action': '不符合2560战法基础形态，建议继续观察。',
+                'hold_suggestion': '建议逢高减仓或清仓，不符合战法形态。',
+                'empty_suggestion': '继续观望，不符合2560战法形态。',
                 'thought_process': f"预筛选排除：MA60趋势为 {indicators.get('ma60_trend')}，价格相对于MA60位置为 {'线上' if indicators.get('is_above_ma60') else '线下'}。",
                 'confidence': 0.1
             }
@@ -291,7 +294,8 @@ class Analysis2560:
                 print(f"建议: {result_dict.get('recommendation')}")
                 print(f"建议买入价格: {result_dict.get('suggested_buy_price')}")
                 print(f"建议卖出价格: {result_dict.get('suggested_sell_price')}")
-                print(f"指令: {result_dict.get('action')}")
+                print(f"持仓建议: {result_dict.get('hold_suggestion')}")
+                print(f"空仓建议: {result_dict.get('empty_suggestion')}")
                 print("------------------------\n")
 
             return result_dict

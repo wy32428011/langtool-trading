@@ -129,7 +129,8 @@ class AnalysisFlow:
   "support": "支撑位数值",
   "resistance": "压力位数值",
   "recommendation": "买入/观望/卖出",
-  "action": "具体交易指令",
+  "hold_suggestion": "针对持仓者的操作建议",
+  "empty_suggestion": "针对空仓者的操作建议",
   "predicted_price": 具体的预期目标价数值,
   "predicted_buy_price": 具体的建议买入价数值,
   "predicted_sell_price": 具体的建议止损价数值,
@@ -256,7 +257,8 @@ class AnalysisFlow:
                 "recommendation": "观望",
                 "trend": "空头/下跌",
                 "analysis": "预筛选拦截：技术指标显示强空头或因子分过低，目前无参与价值。",
-                "action": "观望",
+                "hold_suggestion": "建议减仓，趋势极弱。",
+                "empty_suggestion": "观望为主，不建议入场。",
                 "confidence": 0.1,
                 "analysis_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "alpha158": alpha158
@@ -321,7 +323,8 @@ class AnalysisFlow:
             'support': '支撑位',
             'resistance': '压力位',
             'recommendation': '投资建议',
-            'action': '交易指令',
+            'hold_suggestion': '持仓建议',
+            'empty_suggestion': '空仓建议',
             'predicted_price': '预期目标价',
             'predicted_buy_price': '建议买入价格',
             'predicted_sell_price': '建议卖出价格',
@@ -365,6 +368,7 @@ if __name__ == "__main__":
         
         print("\n--- 交易执行指令 ---")
         print(f"建议: {res.get('recommendation')}")
-        print(f"指令: {res.get('action')}")
+        print(f"持仓建议: {res.get('hold_suggestion')}")
+        print(f"空仓建议: {res.get('empty_suggestion')}")
         print(f"信心: {res.get('confidence')}")
         print("-------------------\n")

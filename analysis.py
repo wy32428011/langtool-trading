@@ -142,7 +142,8 @@ class Analysis:
   "support": "支撑位数值",
   "resistance": "压力位数值",
   "recommendation": "买入/观望/卖出",
-  "action": "交易指令",
+  "hold_suggestion": "针对持仓者的操作建议",
+  "empty_suggestion": "针对空仓者的操作建议",
   "predicted_price": 具体的预期目标价数值,
   "predicted_buy_price": 具体的建议买入价数值,
   "predicted_sell_price": 具体的建议止损价数值,
@@ -177,7 +178,8 @@ class Analysis:
             'support': '支撑位',
             'resistance': '压力位',
             'recommendation': '投资建议',
-            'action': '操作动作',
+            'hold_suggestion': '持仓建议',
+            'empty_suggestion': '空仓建议',
             'predicted_price': '预期目标价',
             'predicted_buy_price': '建议买入价格',
             'predicted_sell_price': '建议卖出价格',
@@ -271,7 +273,8 @@ class Analysis:
                 'recommendation': '观望',
                 'trend': '下跌/空头',
                 'thought_process': '预筛选机制拦截：指标显示强空头排列或 Alpha158 因子评分极低，暂无参与价值。',
-                'action': '保持观望，等待趋势反转或缩量筑底。',
+                'hold_suggestion': '建议逢高减仓或清仓，趋势极弱。',
+                'empty_suggestion': '继续观望，不建议左侧入场。',
                 'confidence': 0.1
             }
             if save_to_file:
@@ -347,12 +350,13 @@ class Analysis:
 
 要求：
 1. 重点分析当前价格相对于关键均线的动量变化。
-2. 给出此时刻的即时操作建议（买入/卖出/观望）及核心逻辑（60字内）。
+2. 给出此时刻针对持仓者和空仓者的即时操作建议（60字内）。
 3. 严格按以下 JSON 格式输出：
 {{
   "recommendation": "买入/观望/卖出",
   "trend": "简短趋势描述",
-  "action": "具体的即时操作指令",
+  "hold_suggestion": "针对持仓者的操作建议",
+  "empty_suggestion": "针对空仓者的操作建议",
   "thought_process": "核心逻辑简述",
   "confidence": 0-1之间数值
 }}
@@ -394,7 +398,8 @@ class Analysis:
                 'current_price': current_data.get('current_price', 0),
                 'recommendation': '错误',
                 'thought_process': f'分析出错: {str(e)}',
-                'action': '请检查网络或配置'
+                'hold_suggestion': '请检查网络或配置',
+                'empty_suggestion': '请检查网络或配置'
             }
 
     def batch_analysis(self, max_workers=5):
