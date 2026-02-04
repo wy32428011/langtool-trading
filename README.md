@@ -48,7 +48,19 @@ uv pip install -r pyproject.toml
 
 ### 3. 使用方式
 
-通过 `main.py` 运行程序：
+推荐使用提供的脚本运行程序，支持交互式选择参数：
+
+- **Windows 用户**: 直接双击运行对应的 `.bat` 文件。
+- **Linux/macOS 用户**: 运行对应的 `.sh` 文件（需先执行 `chmod +x *.sh` 赋权）。
+
+| 脚本名称 | 对应功能 |
+| :--- | :--- |
+| `run_main` | 主分析程序 (支持单股分析和批量分析) |
+| `run_realtime` | 实时监控与动态分析工具 |
+| `run_flow` | 多角色 Agent 协同分析流 (LangGraph) |
+| `run_batch2560` | A 股 2560 战法批量分析工具 |
+
+当然，你也可以通过命令行手动运行：
 
 #### 单只股票分析
 ```bash
