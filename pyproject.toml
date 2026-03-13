@@ -12,10 +12,11 @@ dependencies = [
     "numpy==1.26.4",
     "openpyxl>=3.1.5",
     "pandas>=2.3.3",
+    "pandas-stubs~=3.0.0",
     "pymysql>=1.1.2",
     "sqlalchemy>=2.0.46",
 ]
 
 [[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
 default = true

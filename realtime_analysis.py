@@ -12,6 +12,15 @@ def main():
     else:
         stock_code = input("请输入需要分析的股票编码 (如 000001): ").strip()
     
+    holding_quantity = 0
+    try:
+        hold_input = input(f"请输入当前持有 {stock_code} 的数量 (默认 0): ").strip()
+        if hold_input:
+            holding_quantity = int(hold_input)
+    except ValueError:
+        print("输入无效，设为 0")
+        holding_quantity = 0
+    
     if not stock_code:
         print("错误: 股票编码不能为空")
         return
@@ -92,7 +101,8 @@ def main():
                     stock_data.get('name'), 
                     current_data, 
                     indicators, 
-                    factor_158
+                    factor_158,
+                    holding_quantity
                 )
                 
                 if result:
@@ -100,7 +110,8 @@ def main():
                     print(f"【实时分析 - {result.get('stock_name')} ({result.get('stock_code')})】")
                     print(f"时间: {result.get('analysis_time')} | 价格: {result.get('current_price')} ({current_data.get('change_percent')}%)")
                     print(f"趋势: {result.get('trend')}")
-                    print(f"建议: {result.get('recommendation')} (信心: {int(result.get('confidence', 0)*100)}%)")
+                    print(f"建议动作: 【{result.get('action')}】 | 目标/买入价位: {result.get('target_price')}")
+                    print(f"总体建议: {result.get('recommendation')} (信心: {int(result.get('confidence', 0)*100)}%)")
                     print(f"核心逻辑: {result.get('thought_process')}")
                     print(f"👉 持仓建议: {result.get('hold_suggestion')}")
                     print(f"👉 空仓建议: {result.get('empty_suggestion')}")

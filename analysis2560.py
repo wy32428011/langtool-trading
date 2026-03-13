@@ -310,7 +310,33 @@ class Analysis2560:
         """批量分析所有股票，多线程执行"""
         database = Database()
         stock_codes = database.get_all_stock_codes()
-        print(f"获取到 {len(stock_codes)} 只股票，开始多线程批量 2560 分析 (max_workers={max_workers})...")
+        print(f"获取到 {len(stock_codes)} 只股票，开始预筛选...")
+
+        # 预筛选逻辑：换手率大于 5
+        filtered_codes = []
+        stock_info_dict = database.get_batch_stock_info(stock_codes)
+        
+        for code in stock_codes:
+            info = stock_info_dict.get(code)
+            if not info:
+                continue
+            
+            try:
+                real_time_data = database.get_real_time_data(info.get('full_code', code))
+                if real_time_data:
+                    turnover_rate = real_time_data.get('turnover_rate', 0)
+                    if turnover_rate <= 3:
+                        print(f"跳过 {code} ({info.get('name', '')}): 换手率 {turnover_rate} <= 3")
+                        continue
+                else:
+                    continue
+            except:
+                continue
+            filtered_codes.append(code)
+            print(f"筛选 {code} ({info.get('name', '')}) 完成")
+            
+        stock_codes = filtered_codes
+        print(f"预筛选完成，剩余 {len(stock_codes)} 只股票，开始多线程批量 2560 分析 (max_workers={max_workers})...")
         
         start_time = time.time()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

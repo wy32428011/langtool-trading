@@ -333,7 +333,7 @@ class Analysis:
             print(f"分析股票 {stock_code} 失败: {e}")
             return None
     
-    def quick_analysis(self, stock_code, stock_name, current_data, indicators, factor_158):
+    def quick_analysis(self, stock_code, stock_name, current_data, indicators, factor_158, holding_quantity=0):
         """
         专为实时分析设计的快速分析方法。
         跳过数据库查询，直接处理传入的数据，并使用精简版 Prompt。
@@ -345,16 +345,21 @@ class Analysis:
         prompt = f"""
 请作为资深实时交易员，对 {stock_name} ({stock_code}) 进行秒级研判。
 当前价格: {current_data.get('current_price')} ({current_data.get('change_percent')}%)
+当前持仓数量: {holding_quantity}
 技术指标: MA5:{indicators.get('ma5')}, MA20:{indicators.get('ma20')}, RSI:{indicators.get('rsi')}, MACD:{indicators.get('macd_hist')}
 量比: {indicators.get('volume_ratio')} | Alpha158: {factor_158:.4f}
 
 要求：
 1. 重点分析当前价格相对于关键均线的动量变化。
-2. 给出此时刻针对持仓者和空仓者的即时操作建议（60字内）。
+2. 根据当前持仓情况给出建议：
+   - 如果持仓 > 0: 明确建议是“清仓”、“减仓”、“继续持有”还是“追加买入”，并说明理由。
+   - 如果持仓 == 0: 明确建议是否应该买入，如果买入，预测一个理想的“买入价位”，并说明理由。
 3. 严格按以下 JSON 格式输出：
 {{
   "recommendation": "买入/观望/卖出",
   "trend": "简短趋势描述",
+  "action": "清仓/减仓/持股/追加/买入/观望",
+  "target_price": "预测的买入价位或目标价位 (数值)",
   "hold_suggestion": "针对持仓者的操作建议",
   "empty_suggestion": "针对空仓者的操作建议",
   "thought_process": "核心逻辑简述",
@@ -386,6 +391,7 @@ class Analysis:
             result_dict['analysis_time'] = datetime.now().strftime("%H:%M:%S")
             result_dict['current_price'] = current_data.get('current_price', 0)
             result_dict['alpha158'] = factor_158
+            result_dict['holding_quantity'] = holding_quantity
             
             return result_dict
 
@@ -396,10 +402,13 @@ class Analysis:
                 'stock_name': stock_name,
                 'analysis_time': datetime.now().strftime("%H:%M:%S"),
                 'current_price': current_data.get('current_price', 0),
+                'holding_quantity': holding_quantity,
                 'recommendation': '错误',
                 'thought_process': f'分析出错: {str(e)}',
                 'hold_suggestion': '请检查网络或配置',
-                'empty_suggestion': '请检查网络或配置'
+                'empty_suggestion': '请检查网络或配置',
+                'action': '未知',
+                'target_price': 0
             }
 
     def batch_analysis(self, max_workers=5):
@@ -427,13 +436,18 @@ class Analysis:
                 print(f"跳过 {code} ({name}): 名称包含 ST")
                 continue
             
-            # 2. 价格小于 50
+            # 2. 价格小于 50 且换手率大于 5
             try:
                 real_time_data = database.get_real_time_data(info.get('full_code', code))
                 if real_time_data:
                     current_price = real_time_data.get('current_price', 0)
                     if current_price >= 50:
                         print(f"跳过 {code} ({name}): 价格 {current_price} >= 50")
+                        continue
+                    
+                    turnover_rate = real_time_data.get('turnover_rate', 0)
+                    if turnover_rate <= 5:
+                        print(f"跳过 {code} ({name}): 换手率 {turnover_rate} <= 5")
                         continue
                 else:
                     continue
