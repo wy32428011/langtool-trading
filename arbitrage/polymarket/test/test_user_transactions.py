@@ -37,7 +37,7 @@ def test_fetch_user_transactions(wallet_address=None):
     print("\n[B] 获取链上资产转移 (Asset Transfers):")
     try:
         # 我们主要关注 USDC 和条件代币的转移
-        USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+        USDC_ADDRESS = "0xc9422dFCA3A1D58879E985896e621710195dd145"
         CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
         
         # 1. 查询作为发送者的转移 (Outbound)
@@ -45,7 +45,7 @@ def test_fetch_user_transactions(wallet_address=None):
         transfers_from = alchemy_client.get_asset_transfers(
             from_address=wallet_address,
             contract_addresses=[USDC_ADDRESS, CTF_ADDRESS],
-            category=["erc20"]
+            category=["erc1155"]
         )
         txs_out = transfers_from.get("transfers", [])
         print(f"获取到 {len(txs_out)} 条转出记录。")
@@ -57,7 +57,7 @@ def test_fetch_user_transactions(wallet_address=None):
         transfers_to = alchemy_client.get_asset_transfers(
             to_address=wallet_address,
             contract_addresses=[USDC_ADDRESS, CTF_ADDRESS],
-            category=["erc20"]
+            category=["erc1155"]
         )
         txs_in = transfers_to.get("transfers", [])
         print(f"获取到 {len(txs_in)} 条转入记录。")

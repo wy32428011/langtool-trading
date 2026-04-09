@@ -89,60 +89,78 @@ class AlchemyClient:
             
         return self.call_rpc_method("alchemy_getAssetTransfers", [params])
 
-    def get_logs(self, address: Optional[str] = None, from_block: Union[str, int] = "earliest", 
-                 to_block: Union[str, int] = "latest", topics: List[Any] = None) -> List[Dict[str, Any]]:
+    def get_logs(self, address: Optional[Union[str, List[str]]] = None,
+                 from_block: Union[str, int] = "earliest",
+                 to_block: Union[str, int] = "latest",
+                 topics: List[Any] = None,
+                 batch_size: int = 10) -> List[Dict[str, Any]]:
         """
-        通过 eth_getLogs 获取区块链日志
-        
+        通过 eth_getLogs 获取区块链日志，自动分批以满足 Alchemy 免费套餐限制（10块/请求）
+
         Args:
-            address: 合约地址 (可选)
-            from_block: 起始区块 (字符串或区块号)
-            to_block: 结束区块 (字符串或区块号)
+            address: 合约地址或地址列表 (可选)
+            from_block: 起始区块 (字符串或区块号整数)
+            to_block: 结束区块 (字符串或区块号整数)
             topics: Topic 过滤列表 (可选)
-            
+            batch_size: 每批请求的区块数，免费套餐最大为 10
+
         Returns:
-            List[Dict]: 日志列表
+            List[Dict]: 日志列表（字段均为字符串，topics 已含 0x 前缀）
         """
-        filter_params = {}
-        if from_block is not None:
-            filter_params["fromBlock"] = from_block
-        if to_block is not None:
-            filter_params["toBlock"] = to_block
+        def _to_block_param(b):
+            if isinstance(b, int):
+                return hex(b)
+            return b
+
+        filter_base: Dict[str, Any] = {}
         if address:
-            filter_params["address"] = Web3.to_checksum_address(address)
+            if isinstance(address, list):
+                filter_base["address"] = [Web3.to_checksum_address(a) for a in address]
+            else:
+                filter_base["address"] = Web3.to_checksum_address(address)
         if topics:
-            filter_params["topics"] = topics
-            
-        # 使用 web3.eth.get_logs 方法
-        # web3.py 会自动处理参数格式映射
-        logs = self.w3.eth.get_logs(filter_params)
-        
-        # 将 AttributeDict 转换为普通字典以保持 API 兼容性，并处理 HexBytes
-        result = []
-        for log in logs:
-            log_dict = dict(log)
-            # 处理 topics 列表中的 HexBytes
-            if 'topics' in log_dict:
-                log_dict['topics'] = [t.hex() if hasattr(t, 'hex') else t for t in log_dict['topics']]
-            # 处理其他可能的 HexBytes 字段
-            for key, value in log_dict.items():
-                if hasattr(value, 'hex'):
-                    log_dict[key] = value.hex()
-            result.append(log_dict)
-        return result
+            filter_base["topics"] = topics
+
+        # 如果 from_block/to_block 是字符串（如 "latest"），不分批直接请求
+        if isinstance(from_block, str) or isinstance(to_block, str):
+            filter_base["fromBlock"] = _to_block_param(from_block)
+            filter_base["toBlock"] = _to_block_param(to_block)
+            return self._rpc_get_logs(filter_base)
+
+        all_logs = []
+        for start in range(from_block, to_block + 1, batch_size):
+            end = min(start + batch_size - 1, to_block)
+            params = {**filter_base, "fromBlock": hex(start), "toBlock": hex(end)}
+            all_logs.extend(self._rpc_get_logs(params))
+        return all_logs
+
+    def _rpc_get_logs(self, filter_params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """直接调用 eth_getLogs JSON-RPC，绕过 web3.py beta 版的编码 bug"""
+        result = self._call_rpc("eth_getLogs", [filter_params])
+        return result if result else []
 
     def call_rpc_method(self, method: str, params: List[Any]) -> Any:
         """
-        调用通用的 JSON-RPC 方法（底层使用 web3.py 的管理器）
-        
+        调用通用的 JSON-RPC 方法
+
         Args:
             method: RPC 方法名
             params: 参数列表
-            
+
         Returns:
             Any: RPC 方法的响应结果
         """
-        return self.w3.provider.make_request(method, params).get('result')
+        return self._call_rpc(method, params)
+
+    def _call_rpc(self, method: str, params: List[Any]) -> Any:
+        """底层 JSON-RPC 请求，使用 requests 直接发送"""
+        payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+        resp = requests.post(self.base_url, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data:
+            raise Exception(f"RPC error [{data['error']['code']}]: {data['error']['message']}")
+        return data.get("result")
 
     def is_connected(self) -> bool:
         """

@@ -1,12 +1,14 @@
 import requests
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
 from config import settings
 
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import ApiCreds, TradeParams
 from py_clob_client.constants import POLYGON
+
+from arbitrage.polymarket.ws_client import PolyMarketWebsocketClient
 
 class PolyMarketClient:
     """
@@ -42,6 +44,9 @@ class PolyMarketClient:
             key=self.private_key,
             chain_id=POLYGON
         )
+
+        # 初始化 WebSocket 客户端
+        self.ws_client = PolyMarketWebsocketClient()
 
         # 核心逻辑：如果提供了私钥，先执行 L1 认证以获取/派生 L2 凭据
         if self.private_key:
@@ -105,6 +110,15 @@ class PolyMarketClient:
         :return: 包含买单 (bids) 和卖单 (asks) 的字典
         """
         return self.clob_client.get_order_book(token_id)
+
+    def subscribe_orderbook(self, token_id: str, callback: Callable):
+        """
+        通过 WebSocket 订阅特定 Token 的订单簿
+        
+        :param token_id: Token ID
+        :param callback: 收到数据时的回调函数
+        """
+        self.ws_client.subscribe([token_id], channel="book", callback=callback)
 
     def get_orderbooks(self, token_ids: List[str]) -> List[Dict[str, Any]]:
         """
