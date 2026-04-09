@@ -3,7 +3,7 @@ import logging
 from typing import List, Dict, Any
 from sqlalchemy import text
 from arbitrage.polymarket.engine import polymarket_engine
-from arbitrage.polymarket.polymarket_agent import PolyMarketAgent
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

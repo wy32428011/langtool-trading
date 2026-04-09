@@ -1,19 +1,14 @@
 import logging
-from typing import List, Optional
+from typing import Optional
 from sqlalchemy import text
 from arbitrage.polymarket.engine import polymarket_engine
-from arbitrage.polymarket.polymarket_agent import PolyMarketAgent
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-TOPICS = [
-    "Chess", "Coronavirus", "Poker", "Sports", 
-    "Ukraine & Russia", "Politics", "NBA Playoffs", "Art", "Tech", 
-    "Olympics", "US-current-affairs", "NFTs", "Science", "Business", 
-    "Pop-Culture", "Crypto", "Space", "Global Politics"
-]
+TOPICS = ["Politics", "Economy", "Technology", "Crypto", "Twitter", "Culture", "Sports","Weather"]
 
 class TopicUpdater:
     """

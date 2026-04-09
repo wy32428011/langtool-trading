@@ -1,10 +1,8 @@
-import os
-
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
 from config import settings, LLMType
-from arbitrage.polymarket.polymarket_agent import PolyMarketAgent
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 
 
 class Agent:

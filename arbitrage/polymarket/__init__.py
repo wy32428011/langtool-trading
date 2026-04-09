@@ -6,9 +6,9 @@ Polymarket 套利模块
 """
 
 from .client import PolyMarketClient
-from .models import Market, OrderBook, OrderBookLevel
-from .import_to_starrocks import PolyMarketImporter
-from .polymarket_agent import PolyMarketAgent
+from arbitrage.polymarket.llm.models import Market, OrderBook, OrderBookLevel
+from arbitrage.polymarket.collector.import_to_starrocks import PolyMarketImporter
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 from .alchemy_client import AlchemyClient
 
 __all__ = ["PolyMarketClient", "Market", "OrderBook", "OrderBookLevel", "PolyMarketImporter", "PolyMarketAgent", "AlchemyClient"]

@@ -1,9 +1,9 @@
 import json
 import logging
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from arbitrage.polymarket.redis_client import get_redis_client
-from arbitrage.polymarket.update_event_topics import TopicUpdater
+from arbitrage.polymarket.llm.update_event_topics import TopicUpdater
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,16 +24,25 @@ class RedisMarketClassifier:
 
     def is_unclassified(self, market: Dict[str, Any]) -> bool:
         """
-        判断市场是否未分类或分类为 "other"
+        判断市场是否未分类
         """
         topic = market.get("topic")
-        return not topic or topic == "other" or topic == ""
+        # 只有当 topic 缺失、为空或显式为 None 时才视为未分类。
+        # 如果 topic 已经是 "other"，说明已经被处理过一次且 LLM 判定为其他，不再重复处理。
+        return topic is None or topic == ""
+
+    def get_end_date(self, market: Dict[str, Any]) -> Optional[str]:
+        """
+        兼容处理 endDateISO 和 endDateIso
+        """
+        return market.get("endDateISO") or market.get("endDateIso")
 
     def classify_and_update(self, batch_size: int = 20):
         """
         拉取所有市场，筛选出未分类的进行分类并批量更新
+        优先处理具有相同结束日期的数据
         """
-        logger.info("Scanning Redis for unclassified markets...")
+        logger.debug("Scanning Redis for unclassified markets...")
         try:
             # 获取所有市场数据 (Hash 结构)
             all_markets_data = self.redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
@@ -43,18 +52,41 @@ class RedisMarketClassifier:
 
             unclassified_markets = []
             for market_id, market_json in all_markets_data.items():
-                market = json.loads(market_json)
-                if self.is_unclassified(market):
-                    unclassified_markets.append((market_id, market))
+                try:
+                    market = json.loads(market_json)
+                    if self.is_unclassified(market):
+                        unclassified_markets.append((market_id, market))
+                except Exception as e:
+                    logger.error(f"Error parsing market {market_id}: {e}")
 
             if not unclassified_markets:
-                logger.info("All markets are already classified.")
                 return 0
 
             logger.info(f"Found {len(unclassified_markets)} unclassified markets.")
             
+            # 根据结束日期进行分类优先级排序
+            # 统计每个有效结束日期出现的次数
+            date_counts = {}
+            for _, market in unclassified_markets:
+                end_date = self.get_end_date(market)
+                if end_date:
+                    date_counts[end_date] = date_counts.get(end_date, 0) + 1
+            
+            # 将市场分为两组：有重复有效结束日期的和其它的（包含唯一的或日期为空的）
+            duplicates = []
+            others = []
+            for market_id, market in unclassified_markets:
+                end_date = self.get_end_date(market)
+                if end_date and date_counts.get(end_date, 0) > 1:
+                    duplicates.append((market_id, market))
+                else:
+                    others.append((market_id, market))
+            
+            # 合并，重复的排在前面
+            sorted_unclassified = duplicates + others
+            
             # 限制处理数量，避免单次循环时间过长
-            to_process = unclassified_markets[:batch_size]
+            to_process = sorted_unclassified[:batch_size]
             updated_count = 0
             
             # 准备批量更新
@@ -65,8 +97,9 @@ class RedisMarketClassifier:
                 # 在市场数据中，question 相当于事件的 title
                 question = market.get("question")
                 description = market.get("description")
+                end_date = self.get_end_date(market)
                 
-                logger.info(f"Classifying market: {question[:50]}...")
+                logger.info(f"Classifying market: {question[:50]}... (endDate: {end_date})")
                 topic = self.updater.determine_topic_llm(question, description)
                 
                 # 更新 topic 字段
@@ -86,22 +119,22 @@ class RedisMarketClassifier:
             logger.error(f"Error during Redis market classification: {e}")
             return 0
 
-    def run_forever(self, interval: int = 60, batch_size: int = 20):
+    def run_forever(self, batch_size: int = 20):
         """
         持续运行分类任务
         """
-        logger.info(f"Starting Redis Market Classifier loop (interval={interval}s, batch_size={batch_size})...")
+        logger.info(f"Starting Redis Market Classifier loop (batch_size={batch_size})...")
         while True:
             updated = self.classify_and_update(batch_size=batch_size)
             
-            # 如果还有未处理的，可以缩短等待时间或者继续处理
-            # 简单起见，这里统一 sleep
+            # 持续处理，直到没有新数据
             if updated > 0:
-                logger.info(f"Processed {updated} markets, sleeping for {interval} seconds...")
+                logger.info(f"Processed {updated} markets, checking for more...")
             else:
-                logger.info(f"No markets processed, sleeping for {interval} seconds...")
-            
-            time.sleep(interval)
+                # 如果没有处理任何市场，短暂等待 1 秒防止 CPU 占用过高
+                # 之前用户说不用 sleep，但这是在有数据处理的情况下的反馈。
+                # 在没有数据时，极短的 sleep 是必要的，否则会变成死循环空转。
+                time.sleep(1)
 
 def main():
     import sys
@@ -110,7 +143,7 @@ def main():
     
     # 开始无限循环
     try:
-        classifier.run_forever(interval=30, batch_size=10)
+        classifier.run_forever(batch_size=10)
     except KeyboardInterrupt:
         logger.info("Classifier stopped by user.")
 

@@ -1,12 +1,12 @@
 import sys
 import os
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # 将项目根目录添加到 python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from arbitrage.polymarket.polymarket_agent import PolyMarketAgent
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 from agent import Agent
 
 class TestModelSwitching(unittest.TestCase):

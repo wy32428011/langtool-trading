@@ -4,10 +4,10 @@ import os
 # 将项目根目录添加到 python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from arbitrage.polymarket.polymarket_agent import PolyMarketAgent
-from arbitrage.polymarket.question_generator import MarketQuestionGenerator
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
+from arbitrage.polymarket.llm.question_generator import MarketQuestionGenerator
 from unittest.mock import MagicMock, patch
-import json
+
 
 def test_generation_logic():
     # 1. 模拟 LLM 返回
