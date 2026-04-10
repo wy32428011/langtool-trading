@@ -53,10 +53,28 @@ def update_redis_with_markets(redis_client, markets: List[Dict[str, Any]]):
         logger.info(f"Cleared Redis key: {REDIS_KEY_ACTIVE_MARKETS} as no active markets were found.")
         return
 
-    logger.info(f"Updating {len(markets)} markets to Redis...")
+    # 先从 Redis 获取现有的市场数据，以保留已打好的标签 (Topic)
+    existing_data = redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
+    existing_markets = {}
+    for mid, mjson in existing_data.items():
+        try:
+            existing_markets[mid] = json.loads(mjson)
+        except:
+            continue
+
+    logger.info(f"Updating {len(markets)} markets to Redis, preserving existing topics...")
     
     # 准备 HSET 数据 (field: market_id, value: market_json)
-    mapping = {m['id']: json.dumps(m) for m in markets}
+    mapping = {}
+    for m in markets:
+        m_id = m['id']
+        # 如果当前市场在 Redis 中已有，且已有 topic 标签，则保留它
+        if m_id in existing_markets:
+            existing_m = existing_markets[m_id]
+            if "topic" in existing_m and "topic" not in m:
+                m["topic"] = existing_m["topic"]
+        
+        mapping[m_id] = json.dumps(m)
     
     # 管道操作以提高效率
     pipeline = redis_client.pipeline()
