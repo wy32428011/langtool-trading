@@ -10,7 +10,7 @@ from agent import Agent
 def demo_usage():
     # 1. 获取 PolyMarket Agent
     agent_factory = Agent()
-    polymarket_agent = agent_factory.get_polymarket_agent()
+    polymarket_agent = agent_factory.get_polymarket_agent(model_type="v")
 
     # 2. 模拟 PolyMarket 市场数据 (也可以是一个列表)
     market_data = {
@@ -18,9 +18,16 @@ def demo_usage():
     }
 
     # 3. 如果有多个互斥或者相关的市场，可以传入列表
+    # markets = [
+    #     {"question": "Will Trump win the 2024 election?"},
+    #     {"question": "Will Biden win the 2024 election?"}
+    # ]
+
     markets = [
-        {"question": "Will Trump win the 2024 election?"},
-        {"question": "Will Biden win the 2024 election?"}
+        {"question": "在同一场比赛中,A队会赢B队?"},
+        {"question": "在同一场比赛中,B队会赢A队?"},
+        {"question": "在同一场比赛中,A队会赢B队两球?"},
+        {"question": "在同一场比赛中,A队不会赢B队两球?"}
     ]
 
     print("--- 场景1: 分析单个市场 ---")

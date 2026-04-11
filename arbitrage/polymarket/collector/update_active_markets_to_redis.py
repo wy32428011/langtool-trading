@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Redis Key
 REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
 # 更新间隔 (秒)，默认 1 分钟
-UPDATE_INTERVAL = 60
+UPDATE_INTERVAL = 600
 
 def fetch_all_active_markets(client: PolyMarketClient, limit: int = 100) -> List[Dict[str, Any]]:
     """
