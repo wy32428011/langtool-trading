@@ -1,9 +1,8 @@
-import os
-
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
 from config import settings, LLMType
+from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 
 
 class Agent:
@@ -45,3 +44,6 @@ class Agent:
 
         return create_agent(model=self.model,
                             system_prompt=self.system_prompt)
+
+    def get_polymarket_agent(self, model_type: str = "zdzn"):
+        return PolyMarketAgent(model_type=model_type)

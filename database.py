@@ -4,7 +4,7 @@ from functools import lru_cache
 
 import requests
 
-from engine import engine, SessionLocal
+from arbitrage.polymarket.engine import engine, SessionLocal
 import pandas as pd
 
 
