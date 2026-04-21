@@ -43,19 +43,19 @@ class Settings(BaseSettings):
     vector_base_url: str = ""
     vector_model: str = ""
     vector_api_key: str = ""
-    
+
     alchemy_api_key: str = "" # 在 .env 中设置 ALCHEMY_API_KEY
-    
+
     poly_api_key: str = ""
     poly_api_secret: str = ""
     poly_api_passphrase: str = ""
     poly_private_key: str = ""
-    
+
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
     redis_db: int = 0
     redis_password: str = ""
-    
+
     proxy_host: str = ""
     proxy_port: int = 0
 
