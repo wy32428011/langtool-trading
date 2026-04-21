@@ -1,8 +1,10 @@
 from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage
 from langchain_deepseek import ChatDeepSeek
-from config import settings, LLMType
+from langchain_openai import ChatOpenAI
+
 from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
+from config import LLMType, settings
 
 
 class Agent:
@@ -16,15 +18,16 @@ class Agent:
                 temperature=settings.llm_temperature,
             )
         else:
-            # 默认使用 OpenAI 兼容接口 (如 Qwen, SiliconFlow 等)
             self.model = ChatOpenAI(
                 base_url=settings.llm_base_url,
                 model=settings.llm_model,
                 api_key=settings.llm_api_key,
                 max_tokens=settings.max_tokens,
                 temperature=settings.llm_temperature,
+                reasoning_effort="xhigh",
+                streaming=True,
             )
-        
+
         self.system_prompt = (
             "你是一个拥有超过20年从业经验的资深股票数据分析师和金牌交易员。你擅长从海量的历史价格、成交量以及各种技术指标中洞察市场趋势。\n"
             "\n"
@@ -39,11 +42,56 @@ class Agent:
             "请始终保持专业、理性、客观的态度。你的回复应结构清晰，逻辑严密，并明确标注你的分析仅供参考，不构成投资建议。"
         )
 
+    def _extract_text(self, message):
+        text = getattr(message, 'text', None)
+        if isinstance(text, str) and text.strip():
+            return text
+
+        content = getattr(message, 'content', '')
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, str) and item.strip():
+                    text_parts.append(item.strip())
+                elif isinstance(item, dict) and item.get('text'):
+                    text_parts.append(str(item['text']).strip())
+            if text_parts:
+                return ''.join(text_parts)
+
+        additional_kwargs = getattr(message, 'additional_kwargs', {}) or {}
+        for key in ('parsed_text', 'text', 'output_text'):
+            value = additional_kwargs.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+        return ''
+
+    def stream_messages_text(self, messages):
+        text_parts = []
+        for chunk in self.model.stream(messages):
+            text = self._extract_text(chunk)
+            if text:
+                text_parts.append(text)
+        return ''.join(text_parts).strip()
 
     def get_agent(self):
+        return create_agent(model=self.model, system_prompt=self.system_prompt)
 
-        return create_agent(model=self.model,
-                            system_prompt=self.system_prompt)
+    def stream_agent_text(self, payload):
+        final_text = ''
+        for chunk in self.get_agent().stream(payload, stream_mode='values'):
+            messages = chunk.get('messages', [])
+            if not messages:
+                continue
+            latest_message = messages[-1]
+            if not isinstance(latest_message, AIMessage):
+                continue
+            text = self._extract_text(latest_message)
+            if text:
+                final_text = text
+        return final_text.strip()
 
     def get_polymarket_agent(self, model_type: str = "zdzn"):
         return PolyMarketAgent(model_type=model_type)

@@ -8,12 +8,73 @@ import pandas as pd
 from agent import Agent
 from database import Database
 from config import settings
+from confidence_utils import build_low_confidence_from_prescreen, calibrate_confidence, compute_2560_evidence_score
+from langchain_core.messages import AIMessage
+from analysis import round_result_fields
 
 class Analysis2560:
     def __init__(self):
         self.output_dir = "output"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+
+    def _build_summary_lines(self, result):
+        suggested_buy_price = result.get('suggested_buy_price')
+        suggested_sell_price = result.get('suggested_sell_price')
+        confidence = result.get('confidence')
+
+        buy_price_text = f"{suggested_buy_price:.2f}" if isinstance(suggested_buy_price, (int, float)) else suggested_buy_price
+        sell_price_text = f"{suggested_sell_price:.2f}" if isinstance(suggested_sell_price, (int, float)) else suggested_sell_price
+        confidence_text = f"{confidence:.2f}" if isinstance(confidence, (int, float)) else confidence
+
+        return "\n".join([
+            f"\n--- 2560 战法分析结果 ({result.get('stock_code')}) ---",
+            f"股票: {result.get('stock_name')} ({result.get('stock_code')})",
+            f"建议: {result.get('recommendation')}",
+            f"建议买入价格: {buy_price_text}",
+            f"建议卖出价格: {sell_price_text}",
+            f"信心值: {confidence_text}",
+            f"持仓建议: {result.get('hold_suggestion')}",
+            f"空仓建议: {result.get('empty_suggestion')}",
+            "------------------------\n",
+        ])
+
+    def _extract_message_text(self, message):
+        content = getattr(message, 'content', '')
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, str) and item.strip():
+                    text_parts.append(item.strip())
+                elif isinstance(item, dict) and item.get('text'):
+                    text_parts.append(str(item['text']).strip())
+            if text_parts:
+                return "\n".join(text_parts)
+
+        additional_kwargs = getattr(message, 'additional_kwargs', {}) or {}
+        for key in ('parsed_text', 'text', 'output_text'):
+            value = additional_kwargs.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+        return ''
+
+    def _extract_response_text(self, response):
+        if isinstance(response, dict) and 'messages' in response:
+            for message in reversed(response['messages']):
+                if not isinstance(message, AIMessage):
+                    continue
+                text = self._extract_message_text(message)
+                if text:
+                    return text
+            return ''
+
+        if isinstance(response, AIMessage):
+            return self._extract_message_text(response)
+
+        return self._extract_message_text(response) if hasattr(response, 'content') else str(response)
 
     def _calculate_indicators(self, history_data):
         """计算2560战法核心指标"""
@@ -80,7 +141,8 @@ class Analysis2560:
 1. 价格预测（建议买入价、建议卖出价/止损价）必须基于25日/60日均线及近期高低点给出精确数值，不得模糊。
 2. 必须包含对未来一周（5个交易日）的具体走势预判逻辑。
 3. 在得出结论前，必须包含“自我辩驳”环节：针对你给出的2560战法研判，寻找至少一个可能的失效点（如：虚假金叉、量能不足或大盘环境制约）。
-4. 结合2560逻辑，严格按以下JSON输出：
+4. 结合2560逻辑，严格按以下JSON输出。
+5. `confidence` 是对2560结论可靠性的量化评分，不是语气强弱：只有当 MA60 趋势、MA25 趋势、股价位置和量能信号高度一致时，才可给 0.75 以上；若均线趋势、位置关系或量能存在明显冲突，应控制在 0.55 以下；仅在多个2560核心证据共振且主要失效风险较少时，才允许给 0.85 以上。
 {{
   "stock_code": "{stock_data.get('code')}",
   "stock_name": "{stock_data.get('name')}",
@@ -191,7 +253,6 @@ class Analysis2560:
     def run(self, stock_code, save_to_file=True):
         print(f"正在启动 2560 战法分析，股票代码: {stock_code}")
         agent = Agent()
-        llm = agent.get_agent()
         database = Database()
         
         stock_data = database.get_stock_info(stock_code)
@@ -210,6 +271,15 @@ class Analysis2560:
         # 增加预筛选逻辑，压缩 token 消耗和提升效率
         if not self._is_promising(indicators):
             print(f"股票 {stock_code} 不符合 2560 基础形态（MA60向下或价格过低），跳过 LLM 分析。")
+            low_confidence = build_low_confidence_from_prescreen(
+                indicators=indicators,
+                current_data=current_data,
+                failure_reasons=[
+                    f"ma60_trend={indicators.get('ma60_trend')}",
+                    f"is_above_ma60={indicators.get('is_above_ma60')}",
+                    "2560_prescreen_failed",
+                ],
+            )
             return {
                 'stock_code': stock_code,
                 'stock_name': stock_data.get('name', '未知'),
@@ -218,21 +288,20 @@ class Analysis2560:
                 'hold_suggestion': '建议逢高减仓或清仓，不符合战法形态。',
                 'empty_suggestion': '继续观望，不符合2560战法形态。',
                 'thought_process': f"预筛选排除：MA60趋势为 {indicators.get('ma60_trend')}，价格相对于MA60位置为 {'线上' if indicators.get('is_above_ma60') else '线下'}。",
-                'confidence': 0.1
+                'confidence': low_confidence
             }
 
         human_prompt = self._build_human_prompt(stock_data, stock_data, history_data, current_data, indicators)
 
         print(f"正在调用大模型进行 2560 战法分析 ({stock_code})...")
         try:
-            response = llm.invoke({"messages": [{"role": "user", "content": human_prompt}]})
-            
-            # 处理结果
-            if isinstance(response, dict) and 'messages' in response:
-                final_result = response['messages'][-1].content
-            else:
-                final_result = response.content if hasattr(response, 'content') else str(response)
+            final_result = agent.stream_agent_text({"messages": [{"role": "user", "content": human_prompt}]})
             print(f"大模型原始响应: {final_result}")
+
+            if not final_result or not final_result.strip():
+                print("LLM 服务返回空响应，未获得可解析正文。请检查 llm_base_url、model 或上游网关兼容性。")
+                return None
+
             # 提取 JSON
             clean_result = final_result.strip()
             if clean_result.startswith("```json"):
@@ -279,6 +348,9 @@ class Analysis2560:
                 else:
                     raise
 
+            evidence_score = compute_2560_evidence_score(indicators, current_data)
+            result_dict['confidence'] = calibrate_confidence(result_dict.get('confidence'), evidence_score)
+            result_dict = round_result_fields(result_dict)
             result_dict['analysis_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             if save_to_file:
@@ -289,14 +361,7 @@ class Analysis2560:
             
             # 单股模式下打印简要结果
             if save_to_file:
-                print(f"\n--- 2560 战法分析结果 ({stock_code}) ---")
-                print(f"股票: {result_dict.get('stock_name')} ({result_dict.get('stock_code')})")
-                print(f"建议: {result_dict.get('recommendation')}")
-                print(f"建议买入价格: {result_dict.get('suggested_buy_price')}")
-                print(f"建议卖出价格: {result_dict.get('suggested_sell_price')}")
-                print(f"持仓建议: {result_dict.get('hold_suggestion')}")
-                print(f"空仓建议: {result_dict.get('empty_suggestion')}")
-                print("------------------------\n")
+                print(self._build_summary_lines(result_dict))
 
             return result_dict
             

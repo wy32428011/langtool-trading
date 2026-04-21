@@ -9,8 +9,10 @@ from langgraph.graph import StateGraph, END, START
 
 from agent import Agent
 from database import Database
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from config import settings
+from confidence_utils import build_low_confidence_from_prescreen, calibrate_confidence, compute_main_evidence_score
+from analysis import round_result_fields
 
 # 定义状态结构
 class AgentState(TypedDict):
@@ -27,8 +29,6 @@ class AgentState(TypedDict):
 class AnalysisFlow:
     def __init__(self):
         self.agent = Agent()
-        # 直接使用 agent 里的 model
-        self.llm = self.agent.model
         self.db = Database()
         self.output_dir = "output"
         if not os.path.exists(self.output_dir):
@@ -56,8 +56,8 @@ class AnalysisFlow:
         ]
         
         print(f"[{state['stock_code']}] 基本面分析师正在工作...")
-        response = self.llm.invoke(messages)
-        return {"fundamental_analysis": response.content}
+        final_result = self.agent.stream_messages_text(messages)
+        return {"fundamental_analysis": final_result}
 
     def technical_analyst_node(self, state: AgentState):
         """金牌资深股票数据分析师节点"""
@@ -91,8 +91,8 @@ class AnalysisFlow:
         ]
         
         print(f"[{state['stock_code']}] 数据分析师正在工作...")
-        response = self.llm.invoke(messages)
-        return {"technical_analysis": response.content}
+        final_result = self.agent.stream_messages_text(messages)
+        return {"technical_analysis": final_result}
 
     def trader_node(self, state: AgentState):
         """金牌资深股票交易员节点"""
@@ -116,7 +116,8 @@ class AnalysisFlow:
 1. 价格预测（目标价、入场价、止损价）必须基于技术面提供的支撑压力位给出精确数值，不得使用模糊区间。
 2. 必须包含对未来一周（5个交易日）的具体走势预判及逻辑支撑。
 3. 在得出结论前，必须包含“自我辩驳”环节：整合基本面和技术面的冲突点（如：基本面好但技术面弱，或反之），并寻找结论可能失效的风险证据。
-4. 严格按以下JSON格式输出：
+4. 严格按以下JSON格式输出。
+5. `confidence` 是对整合结论可靠性的量化评分，不是语气强弱：只有当基本面、技术面、价格位置与因子信号高度一致时，才可给 0.75 以上；若多方证据存在明显冲突或风险证据较强，应控制在 0.55 以下；仅在多个核心证据共振且主要风险较少时，才允许给 0.85 以上。
 {{
   "stock_code": "{state['stock_code']}",
   "stock_name": "{stock_info.get('name')}",
@@ -144,24 +145,32 @@ class AnalysisFlow:
         ]
         
         print(f"[{state['stock_code']}] 交易员正在决策...")
-        response = self.llm.invoke(messages)
-        
+        content = self.agent.stream_messages_text(messages)
+
         # 解析 JSON
-        content = response.content.strip()
+        content = content.strip() if isinstance(content, str) else ''
         try:
+            if not content:
+                raise ValueError("LLM 空响应")
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
             result_dict = json.loads(content.strip())
+            indicators = state.get('indicators') or self._calculate_indicators(state.get('history_data', []))
+            evidence_score = compute_main_evidence_score(indicators, alpha158, real_time_data)
+            result_dict['confidence'] = calibrate_confidence(result_dict.get('confidence'), evidence_score)
+            result_dict = round_result_fields(result_dict)
         except Exception as e:
-            print(f"解析交易员输出失败: {e}")
+            error_message = "LLM 空响应" if str(e) == "LLM 空响应" else f"解析交易员输出失败: {e}"
+            print(error_message)
             result_dict = {
                 "stock_code": state['stock_code'],
                 "stock_name": stock_info.get('name'),
-                "error": "解析失败",
+                "error": "LLM 空响应" if str(e) == "LLM 空响应" else "解析失败",
                 "raw_content": content,
-                "analysis": "分析失败"
+                "analysis": "分析失败",
+                "confidence": 0.0
             }
             
         return {"final_result": result_dict}
@@ -250,6 +259,18 @@ class AnalysisFlow:
         # 预筛选
         if not self._is_promising(indicators, alpha158):
             print(f"[{stock_code}] 预筛选未通过，跳过流程。")
+            low_confidence = build_low_confidence_from_prescreen(
+                indicators=indicators,
+                factor_158=alpha158,
+                current_data=real_time_data,
+                failure_reasons=[
+                    f"alpha158={alpha158}",
+                    f"ma5={indicators.get('ma5')}",
+                    f"ma20={indicators.get('ma20')}",
+                    f"ma60={indicators.get('ma60')}",
+                    "analysisflow_prescreen_failed",
+                ],
+            )
             result = {
                 "stock_code": stock_code,
                 "stock_name": stock_info.get('name', '未知'),
@@ -259,7 +280,7 @@ class AnalysisFlow:
                 "analysis": "预筛选拦截：技术指标显示强空头或因子分过低，目前无参与价值。",
                 "hold_suggestion": "建议减仓，趋势极弱。",
                 "empty_suggestion": "观望为主，不建议入场。",
-                "confidence": 0.1,
+                "confidence": low_confidence,
                 "analysis_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "alpha158": alpha158
             }

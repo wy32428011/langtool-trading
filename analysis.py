@@ -7,6 +7,41 @@ import pandas as pd
 from agent import Agent
 from database import Database
 from config import settings
+from confidence_utils import (
+    build_low_confidence_from_prescreen,
+    calibrate_confidence,
+    compute_main_evidence_score,
+)
+from langchain_core.messages import AIMessage
+
+
+PRICE_ROUND_FIELDS = (
+    'predicted_price',
+    'predicted_buy_price',
+    'predicted_sell_price',
+    'suggested_buy_price',
+    'suggested_sell_price',
+    'target_price',
+)
+
+
+def round_result_fields(result_dict):
+    for field in PRICE_ROUND_FIELDS:
+        value = result_dict.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            result_dict[field] = round(float(value), 2)
+
+    confidence = result_dict.get('confidence')
+    if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
+        result_dict['confidence'] = round(float(confidence), 2)
+
+    return result_dict
+
+
+def format_decimal_text(value):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{float(value):.2f}"
+    return value
 
 
 class Analysis:
@@ -19,6 +54,56 @@ class Analysis:
         self.output_dir = "output"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+
+    def _build_summary_lines(self, result):
+        return "\n".join([
+            f"\n--- 主分析结果 ({result.get('stock_code')}) ---",
+            f"股票: {result.get('stock_name')} ({result.get('stock_code')})",
+            f"建议: {result.get('recommendation')}",
+            f"建议买入价格: {format_decimal_text(result.get('predicted_buy_price'))}",
+            f"建议卖出价格: {format_decimal_text(result.get('predicted_sell_price'))}",
+            f"信心值: {format_decimal_text(result.get('confidence'))}",
+            f"持仓建议: {result.get('hold_suggestion')}",
+            f"空仓建议: {result.get('empty_suggestion')}",
+            "------------------------\n",
+        ])
+
+    def _extract_message_text(self, message):
+        content = getattr(message, 'content', '')
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, str) and item.strip():
+                    text_parts.append(item.strip())
+                elif isinstance(item, dict) and item.get('text'):
+                    text_parts.append(str(item['text']).strip())
+            if text_parts:
+                return "\n".join(text_parts)
+
+        additional_kwargs = getattr(message, 'additional_kwargs', {}) or {}
+        for key in ('parsed_text', 'text', 'output_text'):
+            value = additional_kwargs.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+        return ''
+
+    def _extract_response_text(self, response):
+        if isinstance(response, dict) and 'messages' in response:
+            for message in reversed(response['messages']):
+                if not isinstance(message, AIMessage):
+                    continue
+                text = self._extract_message_text(message)
+                if text:
+                    return text
+            return ''
+
+        if isinstance(response, AIMessage):
+            return self._extract_message_text(response)
+
+        return self._extract_message_text(response) if hasattr(response, 'content') else str(response)
 
     def _calculate_indicators(self, history_data):
         """计算技术指标"""
@@ -129,7 +214,8 @@ class Analysis:
 1. 价格预测（目标价、入场价、止损价）必须基于上述技术指标和波段高低点给出精确的数值点位，严禁给出“XX元附近”等模糊表述。
 2. 必须包含对未来一周（5个交易日）的走势预判逻辑。
 3. 在得出结论前，必须包含“自我辩驳”环节：针对你给出的主要趋势研判，寻找至少一个反向证据或潜在失效场景。
-4. 严格按以下JSON格式输出分析结果：
+4. 严格按以下JSON格式输出分析结果。
+5. `confidence` 是对结论可靠性的量化评分，不是语气强弱：当趋势、量能、均线位置、因子信号等核心证据高度一致时，才可给 0.75 以上；当证据存在明显冲突或风险项较多时，应控制在 0.55 以下；只有在多个核心证据一致且主要风险较少时，才允许给 0.85 以上。
 {{
   "stock_code": "{stock_data.get('code')}",
   "stock_name": "{stock_data.get('name')}",
@@ -242,7 +328,6 @@ class Analysis:
 
     def analysis_stock(self, stock_code, save_to_file=True):
         agent = Agent()
-        llm = agent.get_agent()
         database = Database()
         stock_data = database.get_stock_info(stock_code)
         if not stock_data:
@@ -275,7 +360,7 @@ class Analysis:
                 'thought_process': '预筛选机制拦截：指标显示强空头排列或 Alpha158 因子评分极低，暂无参与价值。',
                 'hold_suggestion': '建议逢高减仓或清仓，趋势极弱。',
                 'empty_suggestion': '继续观望，不建议左侧入场。',
-                'confidence': 0.1
+                'confidence': build_low_confidence_from_prescreen(indicators, factor_158, current_data)
             }
             if save_to_file:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -287,14 +372,11 @@ class Analysis:
 
         print(f"正在分析 {stock_code}...")
         try:
-            response = llm.invoke({"messages": [{"role": "user", "content": human_prompt}]})
-            
-            # 处理结果
-            if isinstance(response, dict) and 'messages' in response:
-                final_result = response['messages'][-1].content
-            else:
-                final_result = response.content if hasattr(response, 'content') else str(response)
+            final_result = agent.stream_agent_text({"messages": [{"role": "user", "content": human_prompt}]})
             print(final_result)
+            if not final_result or not final_result.strip():
+                print("LLM 服务返回空响应，未获得可解析正文。请检查 llm_base_url、model 或上游网关兼容性。")
+                return None
             # 尝试解析 JSON
             clean_result = final_result.strip()
             if clean_result.startswith("```json"):
@@ -306,7 +388,10 @@ class Analysis:
             clean_result = clean_result.strip()
 
             result_dict = json.loads(clean_result)
-            
+            evidence_score = compute_main_evidence_score(indicators, factor_158, current_data)
+            result_dict['confidence'] = calibrate_confidence(result_dict.get('confidence'), evidence_score)
+            result_dict = round_result_fields(result_dict)
+
             # 重新构建字典以确保顺序
             ordered_result = {
                 'stock_code': stock_code,
@@ -326,7 +411,8 @@ class Analysis:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"analysis_{stock_code}_{timestamp}.xlsx"
                 self._save_to_excel(result_dict, filename)
-            
+                print(self._build_summary_lines(result_dict))
+
             return result_dict
 
         except Exception as e:
@@ -339,7 +425,6 @@ class Analysis:
         跳过数据库查询，直接处理传入的数据，并使用精简版 Prompt。
         """
         agent = Agent()
-        llm = agent.get_agent()
         
         # 构建一个极简版 Prompt，侧重于实时变动
         prompt = f"""
@@ -354,7 +439,8 @@ class Analysis:
 2. 根据当前持仓情况给出建议：
    - 如果持仓 > 0: 明确建议是“清仓”、“减仓”、“继续持有”还是“追加买入”，并说明理由。
    - 如果持仓 == 0: 明确建议是否应该买入，如果买入，预测一个理想的“买入价位”，并说明理由。
-3. 严格按以下 JSON 格式输出：
+3. 严格按以下 JSON 格式输出。
+4. `confidence` 是对当前结论可靠性的量化评分，不是语气强弱：只有当价格动量、均线位置、量比和持仓建议方向高度一致时，才可给 0.75 以上；若存在明显冲突证据或短线噪音较大，应控制在 0.55 以下；仅在多项关键信号同步共振且风险较少时，才允许给 0.85 以上。
 {{
   "recommendation": "买入/观望/卖出",
   "trend": "简短趋势描述",
@@ -367,14 +453,10 @@ class Analysis:
 }}
 """
         try:
-            response = llm.invoke({"messages": [{"role": "user", "content": prompt}]})
-            
-            # 处理结果
-            if isinstance(response, dict) and 'messages' in response:
-                final_result = response['messages'][-1].content
-            else:
-                final_result = response.content if hasattr(response, 'content') else str(response)
-            
+            final_result = agent.stream_agent_text({"messages": [{"role": "user", "content": prompt}]})
+            if not final_result or not final_result.strip():
+                raise ValueError("LLM 服务返回空响应，未获得可解析正文。请检查 llm_base_url、model 或上游网关兼容性。")
+
             # 解析 JSON
             clean_result = final_result.strip()
             if "```json" in clean_result:
@@ -384,7 +466,10 @@ class Analysis:
             
             clean_result = clean_result.strip()
             result_dict = json.loads(clean_result)
-            
+            evidence_score = compute_main_evidence_score(indicators, factor_158, current_data)
+            result_dict['confidence'] = calibrate_confidence(result_dict.get('confidence'), evidence_score)
+            result_dict = round_result_fields(result_dict)
+
             # 补全基础字段
             result_dict['stock_code'] = stock_code
             result_dict['stock_name'] = stock_name
@@ -392,7 +477,7 @@ class Analysis:
             result_dict['current_price'] = current_data.get('current_price', 0)
             result_dict['alpha158'] = factor_158
             result_dict['holding_quantity'] = holding_quantity
-            
+
             return result_dict
 
         except Exception as e:
@@ -408,7 +493,8 @@ class Analysis:
                 'hold_suggestion': '请检查网络或配置',
                 'empty_suggestion': '请检查网络或配置',
                 'action': '未知',
-                'target_price': 0
+                'target_price': 0,
+                'confidence': 0.0
             }
 
     def batch_analysis(self, max_workers=5):

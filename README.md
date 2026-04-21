@@ -14,6 +14,7 @@
     - **批量模式**：支持多线程并发分析，快速扫描全市场机会。
     - **多角色流程模式 (LangGraph)**：基于 LangGraph 构建的多角色协同工作流，模拟基本面分析师、技术分析师和资深交易员的评审过程，提供更全面的分析视角。
     - **2560 战法模式**：专门针对 A 股 2560 战法（25 日与 60 日均线结合）设计的分析模式。
+    - **尾盘扫描模式**：面向 A 股超短场景，围绕“尾盘买入、次日冲高卖出”进行尾盘窗口扫描、候选筛选与 LLM 精判。
     - **实时分析模式**：实时监控特定股票，通过增量计算技术指标并触发 AI 快速研判，提供秒级的操作建议。
 - **报表产出**：分析结果自动保存为 Excel 格式，方便查阅和归档。
 
@@ -29,12 +30,20 @@
 
 ### 1. 环境准备
 
-确保你的系统已安装 Python 3.13 或以上版本。推荐使用 [uv](https://github.com/astral-sh/uv) 进行包管理。
+确保你的系统已安装 Python 3.12 或 3.13 版本。推荐使用 [uv](https://github.com/astral-sh/uv) 进行包管理。
 
 ```bash
-# 安装依赖
-uv pip install -r pyproject.toml
+# 安装股票分析主路径所需依赖
+uv sync
 ```
+
+如果需要使用 Polymarket 相关功能，请在非 Windows 环境下额外安装对应可选依赖：
+
+```bash
+uv sync --extra polymarket
+```
+
+该可选依赖当前基于 `py-clob-client` 的 0.x 版本带；Windows 环境下该功能仍受上游包可用性限制。
 
 ### 2. 配置说明
 
@@ -59,6 +68,7 @@ uv pip install -r pyproject.toml
 | `run_realtime` | 实时监控与动态分析工具 |
 | `run_flow` | 多角色 Agent 协同分析流 (LangGraph) |
 | `run_batch2560` | A 股 2560 战法批量分析工具 |
+| `run_tail_scan` | A 股尾盘扫描工具 |
 
 当然，你也可以通过命令行手动运行：
 
@@ -89,6 +99,27 @@ python batch2560.py --workers 80
 ```
 *该模式专注于 2560 战法逻辑，结合 25 日和 60 日均线趋势进行专项分析。*
 
+#### 尾盘扫描
+该模式面向 A 股超短交易场景，用于在尾盘窗口内完成候选扫描、筛选与 LLM 精判。
+
+脚本启动方式：`run_tail_scan.bat` / `run_tail_scan.sh`
+
+```bash
+uv run tail_scan.py --start 14:30 --deadline 14:50 --workers 80 --top 10
+```
+
+参数说明：
+- `--start`：扫描开始时间，格式为 `HH:MM`，默认值为 `14:30`。
+- `--deadline`：扫描截止时间，格式为 `HH:MM`，默认值为 `14:50`。
+- `--workers`：并发工作线程数，默认值为 `80`。
+- `--top`：保留候选数量，默认值为 `10`。
+
+输出结果：
+- `output/tail_scan_*.xlsx`：尾盘扫描全量结果。
+- `output/tail_selected_*.xlsx`：尾盘精选结果。
+
+依赖前提：沿用现有数据库与 LLM 配置，无需额外新增独立配置。
+
 #### 实时分析
 ```bash
 python realtime_analysis.py
@@ -102,7 +133,11 @@ python realtime_analysis.py
 - `analysisflow.py`: 基于 LangGraph 的多角色协同分析流。
 - `analysis2560.py`: A 股 2560 战法专项分析工具。
 - `batch2560.py`: A 股 2560 战法批量分析工具。
+- `tail_scan.py`: 尾盘扫描命令入口，负责命令行参数解析与流程启动。
+- `tail_analysis.py`: 尾盘扫描核心逻辑，负责候选扫描、筛选、精判与结果输出。
 - `realtime_analysis.py`: 股票实时监控与动态分析工具。
+- `run_tail_scan.bat`: Windows 下的尾盘扫描启动脚本。
+- `run_tail_scan.sh`: Linux/macOS 下的尾盘扫描启动脚本。
 - `agent.py`: 封装 LLM 交互逻辑，定义系统提示词。
 - `database.py`: 数据库操作层，负责历史数据查询及因子获取。
 - `config.py`: 项目配置文件。

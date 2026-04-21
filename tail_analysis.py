@@ -487,6 +487,8 @@ class TailAnalysis:
         """解析模型 JSON 结果，失败时优雅回退。"""
         try:
             json_text = self._extract_json_text(raw_text)
+            if not json_text or not json_text.strip():
+                raise ValueError("LLM 空响应")
             parsed = json.loads(json_text)
             if not isinstance(parsed, dict):
                 raise ValueError("模型返回的 JSON 不是对象")
@@ -533,15 +535,7 @@ class TailAnalysis:
 
         try:
             agent = self.agent_cls()
-            llm = agent.get_agent()
-            response = llm.invoke({"messages": [{"role": "user", "content": prompt}]})
-
-            # 兼容 analysis.py 中已有的响应读取方式。
-            if isinstance(response, dict) and "messages" in response:
-                final_result = response["messages"][-1].content
-            else:
-                final_result = response.content if hasattr(response, "content") else str(response)
-
+            final_result = agent.stream_agent_text({"messages": [{"role": "user", "content": prompt}]})
             return self._parse_llm_json_result(item, final_result)
         except Exception as exc:
             return self._fallback_refine_result(item, str(exc))
