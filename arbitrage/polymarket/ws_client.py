@@ -3,8 +3,11 @@ import logging
 import websocket
 import threading
 import time
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Set
 from config import settings
+from arbitrage.polymarket.engine import polymarket_engine
+from arbitrage.polymarket.redis_client import get_redis_client
+from sqlalchemy import text
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -62,8 +65,80 @@ class PolyMarketWebsocketClient:
         logger.info("Websocket connection opened.")
         self.is_running = True
         self.reconnect_delay = 1 # 重置重连延迟
-        # 连接打开后重新订阅
+        # 连接打开后重新订阅（首次连接时 subscriptions 已在 start() 中预加载）
         self._resubscribe()
+
+    def get_marked_market_ids(self) -> Set[str]:
+        """从 StarRocks 中获取 mark='y' 的 market_a_id 和 market_b_id"""
+        query = text("SELECT market_a_id, market_b_id FROM polymarket_fifa_matrix_marks WHERE mark = 'y'")
+        market_ids = set()
+        try:
+            with polymarket_engine.connect() as conn:
+                result = conn.execute(query)
+                for row in result:
+                    market_ids.add(str(row[0]))
+                    market_ids.add(str(row[1]))
+        except Exception as e:
+            logger.error(f"Failed to fetch marked market IDs: {e}")
+        return market_ids
+
+    def get_tokens_from_redis(self, market_ids: Set[str]) -> List[str]:
+        """根据 market_ids 从 Redis 中获取对应的 clobTokenIds"""
+        if not market_ids:
+            return []
+        
+        tokens = []
+        try:
+            rc = get_redis_client()
+            all_data = rc.hgetall("polymarket:active_markets")
+            for m_id in market_ids:
+                if m_id in all_data:
+                    try:
+                        market = json.loads(all_data[m_id])
+                        clob_token_ids = market.get("clobTokenIds")
+                        if clob_token_ids:
+                            if isinstance(clob_token_ids, str):
+                                clob_token_ids = json.loads(clob_token_ids)
+                            if isinstance(clob_token_ids, list):
+                                tokens.extend(clob_token_ids)
+                    except Exception as e:
+                        logger.error(f"Error parsing market {m_id} from Redis: {e}")
+        except Exception as e:
+            logger.error(f"Failed to fetch tokens from Redis: {e}")
+        return list(set(tokens)) # 去重
+
+    def subscribe_marked_tokens(self, channel: str = "Market", callback: Optional[Callable] = None):
+        """获取标记的市场并订阅其 token"""
+        market_ids = self.get_marked_market_ids()
+        if not market_ids:
+            logger.info("No marked markets found to subscribe.")
+            return
+
+        tokens = self.get_tokens_from_redis(market_ids)
+        if tokens:
+            logger.info(f"Subscribing to {len(tokens)} tokens from marked markets.")
+            self.subscribe(tokens, channel=channel, callback=callback)
+        else:
+            logger.info("No tokens found for marked markets.")
+
+    def load_marked_tokens_to_subscriptions(self, channel: str = "Market", callback: Optional[Callable] = None):
+        """预加载标记市场的 token 到 subscriptions，不立即发送订阅（连接建立后由 _resubscribe 发送）"""
+        market_ids = self.get_marked_market_ids()
+        if not market_ids:
+            logger.info("No marked markets found to preload.")
+            return
+
+        tokens = self.get_tokens_from_redis(market_ids)
+        if not tokens:
+            logger.info("No tokens found for marked markets.")
+            return
+
+        logger.info(f"Preloading {len(tokens)} tokens from marked markets into subscriptions.")
+        if channel not in self.subscriptions:
+            self.subscriptions[channel] = {"assets": set(), "callback": callback}
+        self.subscriptions[channel]["assets"].update(tokens)
+        if callback:
+            self.subscriptions[channel]["callback"] = callback
 
     def _resubscribe(self):
         """连接恢复后重新发送所有订阅请求"""
@@ -83,8 +158,13 @@ class PolyMarketWebsocketClient:
         # 如果已经运行且连接正常，不重复启动
         if self.is_running and self.ws and self.ws.sock and self.ws.sock.connected:
             return
-        
+
         self.should_reconnect = True
+
+        # 首次启动时预加载标记的 token 到 subscriptions（重连时跳过，保留已有订阅）
+        if not self.subscriptions:
+            self.load_marked_tokens_to_subscriptions()
+
         self.ws = websocket.WebSocketApp(
             self.WSS_URL,
             on_open=self._on_open,
@@ -180,11 +260,12 @@ if __name__ == "__main__":
         print(f"Received: {json.dumps(message, indent=2)}")
 
     client = PolyMarketWebsocketClient()
-    # 示例 Token ID (来自之前的输出)
-    test_token = "53139916998685230938370560473289741425760508848020416029023630402477351897589"
-    
-    client.subscribe([test_token], callback=print_callback)
-    
+
+    # 预加载 marked tokens 并注册 callback，然后启动（连接建立后自动订阅）
+    client.load_marked_tokens_to_subscriptions(callback=print_callback)
+    client.start()
+
+    # 保持主线程运行
     try:
         while True:
             time.sleep(1)

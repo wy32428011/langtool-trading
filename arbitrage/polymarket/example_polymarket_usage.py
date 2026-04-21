@@ -24,10 +24,10 @@ def demo_usage():
     # ]
 
     markets = [
-        {"question": "在同一场比赛中,A队会赢B队?"},
-        {"question": "在同一场比赛中,B队会赢A队?"},
-        {"question": "在同一场比赛中,A队会赢B队两球?"},
-        {"question": "在同一场比赛中,A队不会赢B队两球?"}
+        {"question": "Will Tunisia win the 2026 FIFA World Cup?"},
+        {"question": "Will Tunisia fail to win the 2026 FIFA World Cup?"},
+        {"question": "Will Africa win the 2026 FIFA World Cup?"},
+        {"question": "Will Africa fail to win the 2026 FIFA World Cup (i.e., the winner is not in Africa, or there is otherwise no winner declared within the specified timeframe)?"}
     ]
 
     print("--- 场景1: 分析单个市场 ---")
