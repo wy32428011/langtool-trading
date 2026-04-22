@@ -57,7 +57,7 @@ class PolyMarketAgent:
         Returns:
             str: 生成好的提示词字符串。
         """
-        prompt = f"You are given a set of binary (True/False) questions. Your task is to determine all valid logical combinations of truth values these questions can take. Rules: - Each tuple represents a possible valid assignment of truth values. - Each tuple must contain exactly {len(statements)} values, corresponding to the listed questions. - The output must be a JSON array where each entry is a list of Boolean values. - The output must be valid JSON and contain no additional text."
+        prompt = f"You are given a set of binary (True/False) questions. Your task is to determine all valid logical combinations of truth values these questions can take. Rules: 1. Each tuple represents a possible valid assignment of truth values. 2. Each tuple must contain exactly {len(statements)} values, corresponding to the listed questions. 3. The output must be a JSON array where each entry is a list of Boolean values. 4. The output must be valid JSON and contain no additional text."
         prompt += f"Questions:"
         
         for idx, (_, statement) in enumerate(statements):

@@ -42,35 +42,28 @@ def parse_matrix(matrix_data: Union[str, Dict, List]) -> List[List[bool]]:
 def check_combination_rules(combinations: List[List[bool]]) -> bool:
     """
     检查逻辑组合是否符合要求：
-    1. 第一维度数组长度是四个 (len(combinations) == 4)
-    2. 其中一个组合只有一个 true (sum(true) == 1)
-    3. 其余三个组合必须是两个 true 和两个 false (sum(true) == 2, sum(false) == 2)
+    1. 矩阵结构方面，只需过滤出 3x4
+    2. 三个一维数组中里面的4个元素前两个只有一个true，后两个也应该只有一个为true
     """
-    # 规则 1: 第一个维度数组长度是四个
-    if len(combinations) != 4:
+    # 规则: 第一维度数组长度是 3
+    if len(combinations) != 3:
         return False
     
-    # 统计每个组合中 true 的个数
-    true_counts = []
+    # 规则: 第二维度数组长度必须是 4
+    # 且前两个元素只有一个 true，后两个元素只有一个 true
     for combo in combinations:
-        true_counts.append(sum(1 for val in combo if val is True))
-    
-    # 规则 2: 其中一个组合只有一个 true
-    if true_counts.count(1) != 1:
-        return False
+        if len(combo) != 4:
+            return False
         
-    # 规则 3: 其余三个组合必须是两个 true (假设第二维长度是 4)
-    # 用户说“两个 true 和两个 false”，意味着第二维长度必须是 4
-    # 如果第二维长度不是 4，比如是 2 或 3，就不可能同时满足 2 个 true 和 2 个 false
-    # 我们先检查所有组合的长度是否一致
-    row_lengths = [len(combo) for combo in combinations]
-    if any(length != 4 for length in row_lengths):
-        return False
-
-    # 检查除了那个 count=1 的，剩下的是否都是 count=2
-    # 既然已经确定有一个是 1 了，我们只需要检查 true_counts 排序后是否为 [1, 2, 2, 2]
-    if sorted(true_counts) != [1, 2, 2, 2]:
-        return False
+        # 前两个元素：combo[0], combo[1]
+        first_two = combo[0:2]
+        if sum(1 for x in first_two if x is True) != 1:
+            return False
+            
+        # 后两个元素：combo[2:4]
+        last_two = combo[2:4]
+        if sum(1 for x in last_two if x is True) != 1:
+            return False
             
     return True
 

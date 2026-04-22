@@ -66,10 +66,44 @@ class MarketSearchView(ttk.Frame):
         today_str = datetime.now().strftime("%Y-%m-%d")
         self.date_entry.insert(0, today_str)
 
-        self.search_btn = ttk.Button(row4, text="查询", command=self.search_markets)
-        self.search_btn.pack(side=tk.LEFT)
+        # 第五行：Spread 和 RewardsMinSize 区间过滤
+        row5 = ttk.Frame(top_frame)
+        row5.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(row5, text="Spread (Min-Max):").pack(side=tk.LEFT)
+        self.spread_min_entry = ttk.Entry(row5, width=8)
+        self.spread_min_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Label(row5, text="-").pack(side=tk.LEFT)
+        self.spread_max_entry = ttk.Entry(row5, width=8)
+        self.spread_max_entry.pack(side=tk.LEFT, padx=2)
 
-        self.count_label = ttk.Label(row4, text="总数量: 0")
+        ttk.Label(row5, text="  RewardsMinSize (Min-Max):").pack(side=tk.LEFT, padx=(10, 0))
+        self.rewards_min_entry = ttk.Entry(row5, width=8)
+        self.rewards_min_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Label(row5, text="-").pack(side=tk.LEFT)
+        self.rewards_max_entry = ttk.Entry(row5, width=8)
+        self.rewards_max_entry.pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(row5, text="  DailyRate (Min-Max):").pack(side=tk.LEFT, padx=(10, 0))
+        self.daily_rate_min_entry = ttk.Entry(row5, width=8)
+        self.daily_rate_min_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Label(row5, text="-").pack(side=tk.LEFT)
+        self.daily_rate_max_entry = ttk.Entry(row5, width=8)
+        self.daily_rate_max_entry.pack(side=tk.LEFT, padx=2)
+
+        # 第六行：逻辑组合关系
+        row6 = ttk.Frame(top_frame)
+        row6.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(row6, text="条件组合逻辑:").pack(side=tk.LEFT)
+        self.logic_var = tk.StringVar(value="OR")
+        ttk.Radiobutton(row6, text="满足任一条件 (OR)", variable=self.logic_var, value="OR").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(row6, text="满足所有条件 (AND)", variable=self.logic_var, value="AND").pack(side=tk.LEFT, padx=5)
+
+        self.search_btn = ttk.Button(row6, text="查询", command=self.search_markets)
+        self.search_btn.pack(side=tk.LEFT, padx=(20, 0))
+
+        self.count_label = ttk.Label(row6, text="总数量: 0")
         self.count_label.pack(side=tk.LEFT, padx=20)
 
         # 中部主体区域 (使用 PanedWindow 分隔列表和详情)
@@ -110,10 +144,38 @@ class MarketSearchView(ttk.Frame):
         input_token = self.token_entry.get().strip()
         input_id = self.id_entry.get().strip()
         input_date = self.date_entry.get().strip()
+        
+        spread_min_str = self.spread_min_entry.get().strip()
+        spread_max_str = self.spread_max_entry.get().strip()
+        rewards_min_str = self.rewards_min_entry.get().strip()
+        rewards_max_str = self.rewards_max_entry.get().strip()
+        daily_rate_min_str = self.daily_rate_min_entry.get().strip()
+        daily_rate_max_str = self.daily_rate_max_entry.get().strip()
+        
+        logic_mode = self.logic_var.get() # OR 或 AND
 
-        if not input_keyword and not input_token and not input_id and not input_date:
-            messagebox.showwarning("输入错误", "请输入搜索条件 (ID, 关键字, Token ID, 或到期日)")
+        # 判断是否有输入
+        has_input = any([input_keyword, input_token, input_id, input_date, 
+                        spread_min_str, spread_max_str, rewards_min_str, rewards_max_str,
+                        daily_rate_min_str, daily_rate_max_str])
+
+        if not has_input:
+            messagebox.showwarning("输入错误", "请输入至少一个搜索条件")
             return
+
+        # 解析数值区间
+        def parse_float(s):
+            try:
+                return float(s)
+            except:
+                return None
+
+        spread_min = parse_float(spread_min_str)
+        spread_max = parse_float(spread_max_str)
+        rewards_min = parse_float(rewards_min_str)
+        rewards_max = parse_float(rewards_max_str)
+        daily_rate_min = parse_float(daily_rate_min_str)
+        daily_rate_max = parse_float(daily_rate_max_str)
 
         # 分隔符统一使用分号
         keywords = [k.strip() for k in input_keyword.split(";") if k.strip()]
@@ -134,26 +196,23 @@ class MarketSearchView(ttk.Frame):
                 try:
                     market = json.loads(m_json)
                     
-                    # 匹配逻辑：(ID 匹配) OR (关键字匹配) OR (Token ID 匹配) OR (到期日匹配)
-                    match = False
-                    
+                    conditions_results = []
+
                     # 1. 市场 ID 匹配
                     if market_ids:
-                        if m_id in market_ids:
-                            match = True
+                        conditions_results.append(m_id in market_ids)
                     
                     # 2. 关键字匹配 (Question/Description)
-                    if not match and keywords:
+                    if keywords:
                         question = (market.get("question") or "").lower()
                         description = (market.get("description") or "").lower()
-                        for kw in keywords:
-                            if kw in question or kw in description:
-                                match = True
-                                break
+                        match_kw = any(kw in question or kw in description for kw in keywords)
+                        conditions_results.append(match_kw)
                     
                     # 3. Token ID 匹配 (clobTokenIds)
-                    if not match and token_ids:
+                    if token_ids:
                         clob_tokens_raw = market.get("clobTokenIds")
+                        market_tokens = []
                         if clob_tokens_raw:
                             if isinstance(clob_tokens_raw, str):
                                 try:
@@ -162,20 +221,71 @@ class MarketSearchView(ttk.Frame):
                                     market_tokens = []
                             else:
                                 market_tokens = clob_tokens_raw
-                            
-                            if isinstance(market_tokens, list):
-                                for tid in token_ids:
-                                    if tid in market_tokens:
-                                        match = True
-                                        break
+                        
+                        match_token = False
+                        if isinstance(market_tokens, list):
+                            match_token = any(tid in market_tokens for tid in token_ids)
+                        conditions_results.append(match_token)
 
                     # 4. 到期日匹配 (endDateISO)
-                    if not match and dates:
+                    if dates:
                         end_date = market.get("endDateISO") or market.get("endDateIso") or ""
-                        for dt in dates:
-                            if dt in end_date: # 支持部分匹配，例如输入 2024-05
-                                match = True
-                                break
+                        match_date = any(dt in end_date for dt in dates)
+                        conditions_results.append(match_date)
+
+                    # 5. Spread 区间匹配
+                    if spread_min is not None or spread_max is not None:
+                        val = parse_float(market.get("spread"))
+                        if val is None:
+                            conditions_results.append(False)
+                        else:
+                            res = True
+                            if spread_min is not None and val < spread_min:
+                                res = False
+                            if spread_max is not None and val > spread_max:
+                                res = False
+                            conditions_results.append(res)
+
+                    # 6. RewardsMinSize 区间匹配
+                    if rewards_min is not None or rewards_max is not None:
+                        val = parse_float(market.get("rewardsMinSize"))
+                        if val is None:
+                            conditions_results.append(False)
+                        else:
+                            res = True
+                            if rewards_min is not None and val < rewards_min:
+                                res = False
+                            if rewards_max is not None and val > rewards_max:
+                                res = False
+                            conditions_results.append(res)
+                    
+                    # 7. RewardsDailyRate 区间匹配 (clobRewards 数组)
+                    if daily_rate_min is not None or daily_rate_max is not None:
+                        clob_rewards = market.get("clobRewards")
+                        if not clob_rewards or not isinstance(clob_rewards, list):
+                            conditions_results.append(False)
+                        else:
+                            match_rate = False
+                            for reward in clob_rewards:
+                                rate = parse_float(reward.get("rewardsDailyRate"))
+                                if rate is not None:
+                                    res = True
+                                    if daily_rate_min is not None and rate < daily_rate_min:
+                                        res = False
+                                    if daily_rate_max is not None and rate > daily_rate_max:
+                                        res = False
+                                    if res:
+                                        match_rate = True
+                                        break
+                            conditions_results.append(match_rate)
+
+                    # 逻辑组合
+                    if not conditions_results:
+                        match = False
+                    elif logic_mode == "AND":
+                        match = all(conditions_results)
+                    else: # OR
+                        match = any(conditions_results)
                     
                     if match:
                         self.current_results.append(market)
