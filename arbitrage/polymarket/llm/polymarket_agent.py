@@ -6,7 +6,7 @@ from typing import List, Tuple, Any, Dict
 class PolyMarketAgent:
     """
     Polymarket 智能代理
-    
+
     使用大语言模型 (LLM) 分析预测市场的问题、结果及其逻辑组合。
     支持多种模型后端，如 ZDZN, DeepSeek 和 Qwen。
     """
@@ -28,6 +28,7 @@ class PolyMarketAgent:
                     api_key=settings.zdzn_api_key,
                     temperature=settings.llm_temperature,
                     max_retries=3,
+                    streaming=True,
                 )
             elif model_type == "deepseek":
                 self.model = ChatOpenAI(
@@ -36,6 +37,7 @@ class PolyMarketAgent:
                     api_key=settings.deepseek_api_key,
                     temperature=settings.llm_temperature,
                     max_retries=3,
+                    streaming=True,
                 )
             else:
                 # 默认使用 settings.llm_ (如 Qwen)
@@ -45,7 +47,34 @@ class PolyMarketAgent:
                     api_key=settings.vector_api_key,
                     temperature=settings.llm_temperature,
                     max_retries=3,
+                    streaming=True,
                 )
+
+    def _chunk_to_text(self, chunk) -> str:
+        text = getattr(chunk, 'text', None)
+        if isinstance(text, str) and text.strip():
+            return text
+        content = getattr(chunk, 'content', '')
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, str) and item.strip():
+                    text_parts.append(item.strip())
+                elif isinstance(item, dict) and item.get('text'):
+                    text_parts.append(str(item['text']).strip())
+            if text_parts:
+                return ''.join(text_parts)
+        return ''
+
+    def stream_text(self, prompt: str) -> str:
+        text_parts = []
+        for chunk in self.model.stream(prompt):
+            text = self._chunk_to_text(chunk)
+            if text:
+                text_parts.append(text)
+        return ''.join(text_parts).strip()
 
     def get_prompt(self, statements):
         """
@@ -78,8 +107,7 @@ class PolyMarketAgent:
         """
         prompt = self.get_prompt(statements)
         try:
-            response = self.model.invoke(prompt)
-            content = response.content
+            content = self.stream_text(prompt)
         except Exception as e:
             return {"error": f"LLM invocation failed: {str(e)}", "raw_content": None}
         
@@ -93,7 +121,7 @@ class PolyMarketAgent:
             
             return json.loads(content)
         except Exception as e:
-            return {"error": f"Failed to parse JSON: {str(e)}", "raw_content": response.content}
+            return {"error": f"Failed to parse JSON: {str(e)}", "raw_content": content}
 
     def generate_questions(self, question: str, outcomes: List[str], description: str = None) -> List[str]:
         """
@@ -116,8 +144,7 @@ class PolyMarketAgent:
         prompt += "Just return the JSON array, no extra text."
         
         try:
-            response = self.model.invoke(prompt)
-            content = response.content.strip()
+            content = self.stream_text(prompt).strip()
             # 提取 JSON 部分
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()

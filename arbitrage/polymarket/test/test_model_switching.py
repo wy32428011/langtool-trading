@@ -8,42 +8,43 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from arbitrage.polymarket.llm.polymarket_agent import PolyMarketAgent
 from agent import Agent
+from config import settings
 
 class TestModelSwitching(unittest.TestCase):
-    
-    @patch('arbitrage.polymarket.polymarket_agent.ChatOpenAI')
+
+    @patch('arbitrage.polymarket.llm.polymarket_agent.ChatOpenAI')
     def test_polymarket_agent_init(self, mock_chat_openai):
-        # 测试默认初始化 (zdzn)
-        agent_zdzn = PolyMarketAgent()
+        PolyMarketAgent()
         mock_chat_openai.assert_called_with(
-            base_url="http://192.168.60.172:9090/v1",
-            model="ZDZN",
-            api_key="test_zdzn",
-            temperature=0.1,
-            max_retries=3
-        )
-        
-        # 测试 deepseek 初始化
-        agent_ds = PolyMarketAgent(model_type="deepseek")
-        mock_chat_openai.assert_called_with(
-            base_url="https://api.deepseek.com/v1",
-            model="deepseek-reasoner",
-            api_key="",
-            temperature=0.1,
-            max_retries=3
-        )
-        
-        # 测试其他初始化 (llm)
-        agent_other = PolyMarketAgent(model_type="qwen")
-        mock_chat_openai.assert_called_with(
-            base_url="http://172.16.3.27:49090/v1",
-            model="DeepSeek-V3.2",
-            api_key="test_deepseek",
-            temperature=0.1,
-            max_retries=3
+            base_url=settings.zdzn_base_url,
+            model=settings.zdzn_model,
+            api_key=settings.zdzn_api_key,
+            temperature=settings.llm_temperature,
+            max_retries=3,
+            streaming=True,
         )
 
-    @patch('arbitrage.polymarket.polymarket_agent.ChatOpenAI')
+        PolyMarketAgent(model_type="deepseek")
+        mock_chat_openai.assert_called_with(
+            base_url=settings.deepseek_base_url,
+            model=settings.deepseek_model,
+            api_key=settings.deepseek_api_key,
+            temperature=settings.llm_temperature,
+            max_retries=3,
+            streaming=True,
+        )
+
+        PolyMarketAgent(model_type="qwen")
+        mock_chat_openai.assert_called_with(
+            base_url=settings.vector_base_url,
+            model=settings.vector_model,
+            api_key=settings.vector_api_key,
+            temperature=settings.llm_temperature,
+            max_retries=3,
+            streaming=True,
+        )
+
+    @patch('arbitrage.polymarket.llm.polymarket_agent.ChatOpenAI')
     def test_agent_factory_switching(self, mock_chat_openai):
         factory = Agent()
         

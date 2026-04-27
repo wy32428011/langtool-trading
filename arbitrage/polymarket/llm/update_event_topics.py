@@ -54,9 +54,9 @@ Event Data:
 Response format: Return ONLY the topic name (one of the strings above or "other"), no explanation, no quotes."""
 
         try:
-            response = self.agent.model.invoke(prompt)
-            topic = response.content.strip()
-            
+            topic = self.agent.stream_text(prompt)
+            topic = topic.strip()
+
             # 简单清洗并验证返回的主题是否在列表中
             # 去除可能的引号或句点
             topic = topic.strip('"').strip("'").strip(".")
