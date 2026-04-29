@@ -103,6 +103,9 @@ class MarketSearchView(ttk.Frame):
         self.search_btn = ttk.Button(row6, text="查询", command=self.search_markets)
         self.search_btn.pack(side=tk.LEFT, padx=(20, 0))
 
+        self.reset_btn = ttk.Button(row6, text="重置", command=self.reset_filters)
+        self.reset_btn.pack(side=tk.LEFT, padx=5)
+
         self.count_label = ttk.Label(row6, text="总数量: 0")
         self.count_label.pack(side=tk.LEFT, padx=20)
 
@@ -138,6 +141,34 @@ class MarketSearchView(ttk.Frame):
 
         self.result_text = scrolledtext.ScrolledText(right_frame, wrap=tk.NONE)
         self.result_text.pack(fill=tk.BOTH, expand=True)
+
+    def reset_filters(self):
+        """清空所有查询条件并恢复默认值"""
+        self.keyword_entry.delete(0, tk.END)
+        self.token_entry.delete(0, tk.END)
+        self.id_entry.delete(0, tk.END)
+        
+        # 恢复默认日期
+        self.date_entry.delete(0, tk.END)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        self.date_entry.insert(0, today_str)
+        
+        # 清空数值区间
+        self.spread_min_entry.delete(0, tk.END)
+        self.spread_max_entry.delete(0, tk.END)
+        self.rewards_min_entry.delete(0, tk.END)
+        self.rewards_max_entry.delete(0, tk.END)
+        self.daily_rate_min_entry.delete(0, tk.END)
+        self.daily_rate_max_entry.delete(0, tk.END)
+        
+        # 恢复默认逻辑
+        self.logic_var.set("OR")
+        
+        # 清空结果显示
+        self.listbox.delete(0, tk.END)
+        self.result_text.delete("1.0", tk.END)
+        self.current_results = []
+        self.count_label.config(text="总数量: 0")
 
     def search_markets(self):
         input_keyword = self.keyword_entry.get().strip().lower()
