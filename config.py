@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str = ""
 
+    polymarket_active_market_store_backend: str = "redis"
+    polymarket_mongo_uri: str = "mongodb://127.0.0.1:27017"
+    polymarket_mongo_db: str = "polymarket"
+    polymarket_mongo_active_markets_collection: str = "active_markets"
+
     proxy_host: str = ""
     proxy_port: int = 0
 

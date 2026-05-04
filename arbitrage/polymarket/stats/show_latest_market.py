@@ -3,46 +3,37 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Redis Key
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
 def get_latest_market() -> Dict[str, Any]:
     """
-    从 Redis 获取最近一个更新的市场数据
+    从配置的数据存储获取最近一个更新的市场数据
     """
-    redis_client = get_redis_client()
-    logger.info(f"Fetching markets from Redis key: {REDIS_KEY_ACTIVE_MARKETS}...")
-    
-    all_data = redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
+    logger.info("Fetching markets from active market store...")
+
+    all_data = get_active_market_store().get_all_markets()
     if not all_data:
-        logger.warning("No data found in Redis.")
+        logger.warning("No data found in active market store.")
         return None
-        
+
     latest_market = None
     latest_time = ""
-    
+
     # 尝试寻找具有最新 updatedAt 字段的市场
-    for market_id, market_json in all_data.items():
-        try:
-            market = json.loads(market_json)
-            # 兼容可能的字段名: updatedAt, createdAt, updatedAtISO, createdAtISO
-            update_time = market.get("updatedAt") or market.get("createdAt") or market.get("updatedAtISO") or market.get("createdAtISO") or ""
-            
-            if not latest_market:
-                latest_market = market
-                latest_time = update_time
-            elif update_time > latest_time:
-                latest_market = market
-                latest_time = update_time
-        except Exception as e:
-            logger.error(f"Error parsing JSON for market {market_id}: {e}")
-            
+    for market in all_data.values():
+        update_time = market.get("updatedAt") or market.get("createdAt") or market.get("updatedAtISO") or market.get("createdAtISO") or ""
+
+        if not latest_market:
+            latest_market = market
+            latest_time = update_time
+        elif update_time > latest_time:
+            latest_market = market
+            latest_time = update_time
+
     return latest_market
 
 def show_market(market: Dict[str, Any]):
@@ -54,7 +45,7 @@ def show_market(market: Dict[str, Any]):
         return
 
     print("\n" + "="*50)
-    print(f"Latest Polymarket Market Data Found in Redis")
+    print(f"Latest Polymarket Market Data Found in active market store")
     print("="*50)
     
     # 按照缩进打印 JSON

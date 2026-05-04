@@ -4,44 +4,30 @@ from collections import Counter
 from datetime import datetime
 from typing import Dict, Any, List
 
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Redis Key
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
-def get_all_markets_from_redis() -> List[Dict[str, Any]]:
+def get_all_markets_from_store() -> List[Dict[str, Any]]:
     """
-    从 Redis 获取所有市场数据
+    从配置的数据存储获取所有市场数据
     """
-    redis_client = get_redis_client()
-    logger.info(f"Fetching all markets from Redis key: {REDIS_KEY_ACTIVE_MARKETS}...")
-    
-    all_data = redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
+    logger.info("Fetching all markets from active market store...")
+    all_data = get_active_market_store().get_all_markets()
     if not all_data:
-        logger.warning("No data found in Redis.")
+        logger.warning("No data found in active market store.")
         return []
-        
-    markets = []
-    for market_id, market_json in all_data.items():
-        try:
-            market = json.loads(market_json)
-            markets.append(market)
-        except Exception as e:
-            logger.error(f"Error parsing JSON for market {market_id}: {e}")
-            
-    return markets
+    return list(all_data.values())
 
 def analyze_markets(markets: List[Dict[str, Any]]):
     """
     分析市场数据并打印统计报告
     """
     if not markets:
-        print("\n--- Polymarket Redis Data Stats ---")
-        print("No markets found in Redis.")
+        print("\n--- Polymarket active market store Data Stats ---")
+        print("No markets found in active market store.")
         return
 
     total_count = len(markets)
@@ -95,11 +81,11 @@ def analyze_markets(markets: List[Dict[str, Any]]):
 
     # 5. 打印报告
     print("\n" + "="*50)
-    print(f"Polymarket Redis Stats Report ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    print(f"Polymarket active market store Stats Report ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
     print("="*50)
     
     print(f"\n[Summary]")
-    print(f"- Total Markets in Redis: {total_count}")
+    print(f"- Total Markets in active market store: {total_count}")
     print(f"- Markets with CLOB Tokens: {markets_with_tokens} ({markets_with_tokens/total_count*100:.1f}%)")
     print(f"- Total CLOB Tokens tracked: {total_tokens}")
     
@@ -125,7 +111,7 @@ def analyze_markets(markets: List[Dict[str, Any]]):
 
 if __name__ == "__main__":
     try:
-        markets = get_all_markets_from_redis()
+        markets = get_all_markets_from_store()
         analyze_markets(markets)
     except Exception as e:
         logger.error(f"Failed to generate stats: {e}")

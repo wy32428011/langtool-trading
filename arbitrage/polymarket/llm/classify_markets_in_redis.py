@@ -1,25 +1,21 @@
-import json
 import logging
 import time
 from typing import Dict, Any, Optional
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 from arbitrage.polymarket.llm.update_event_topics import TopicUpdater
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Redis Key
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
 class RedisMarketClassifier:
     """
-    Redis 市场分类器
-    
-    不断从 Redis 中拉取未分类的活跃市场，并使用 LLM 进行主题分类，然后更新回 Redis。
+    活跃市场分类器。
+
+    不断从配置的数据存储中拉取未分类的活跃市场，并使用 LLM 进行主题分类，然后更新回数据存储。
     """
     def __init__(self, model_type: str = "zdzn"):
-        self.redis_client = get_redis_client()
+        self.store = get_active_market_store()
         self.updater = TopicUpdater(model_type=model_type)
 
     def is_unclassified(self, market: Dict[str, Any]) -> bool:
@@ -42,22 +38,18 @@ class RedisMarketClassifier:
         拉取所有市场，筛选出未分类的进行分类并批量更新
         优先处理具有相同结束日期的数据
         """
-        logger.debug("Scanning Redis for unclassified markets...")
+        logger.debug("Scanning active market store for unclassified markets...")
         try:
-            # 获取所有市场数据 (Hash 结构)
-            all_markets_data = self.redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
+            # 获取所有市场数据
+            all_markets_data = self.store.get_all_markets()
             if not all_markets_data:
-                logger.info("No markets found in Redis.")
+                logger.info("No markets found in active market store.")
                 return 0
 
             unclassified_markets = []
-            for market_id, market_json in all_markets_data.items():
-                try:
-                    market = json.loads(market_json)
-                    if self.is_unclassified(market):
-                        unclassified_markets.append((market_id, market))
-                except Exception as e:
-                    logger.error(f"Error parsing market {market_id}: {e}")
+            for market_id, market in all_markets_data.items():
+                if self.is_unclassified(market):
+                    unclassified_markets.append((market_id, market))
 
             if not unclassified_markets:
                 return 0
@@ -89,9 +81,6 @@ class RedisMarketClassifier:
             to_process = sorted_unclassified[:batch_size]
             updated_count = 0
             
-            # 准备批量更新
-            pipeline = self.redis_client.pipeline()
-            
             for market_id, market in to_process:
                 # 提取标题和描述进行分类
                 # 在市场数据中，question 相当于事件的 title
@@ -105,25 +94,24 @@ class RedisMarketClassifier:
                 # 更新 topic 字段
                 market["topic"] = topic
                 
-                # 写回 Redis
-                pipeline.hset(REDIS_KEY_ACTIVE_MARKETS, market_id, json.dumps(market))
+                # 写回配置的数据存储
+                self.store.update_market(market_id, market)
                 updated_count += 1
 
             if updated_count > 0:
-                pipeline.execute()
-                logger.info(f"Successfully updated {updated_count} markets in Redis.")
+                logger.info(f"Successfully updated {updated_count} markets in active market store.")
             
             return updated_count
 
         except Exception as e:
-            logger.error(f"Error during Redis market classification: {e}")
+            logger.error(f"Error during active market store market classification: {e}")
             return 0
 
     def run_forever(self, batch_size: int = 20):
         """
         持续运行分类任务
         """
-        logger.info(f"Starting Redis Market Classifier loop (batch_size={batch_size})...")
+        logger.info(f"Starting active market store classifier loop (batch_size={batch_size})...")
         while True:
             updated = self.classify_and_update(batch_size=batch_size)
             

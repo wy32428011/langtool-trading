@@ -1,38 +1,23 @@
-import json
 import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Redis Key
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
-def get_all_markets_from_redis() -> List[Dict[str, Any]]:
+def get_all_markets_from_store() -> List[Dict[str, Any]]:
     """
-    从 Redis 获取所有市场数据
+    从配置的数据存储获取所有市场数据
     """
-    redis_client = get_redis_client()
-    logger.info(f"Fetching all markets from Redis key: {REDIS_KEY_ACTIVE_MARKETS}...")
-    
-    all_data = redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
+    logger.info("Fetching all markets from active market store...")
+    all_data = get_active_market_store().get_all_markets()
     if not all_data:
-        logger.warning("No data found in Redis.")
+        logger.warning("No data found in active market store.")
         return []
-        
-    markets = []
-    for market_id, market_json in all_data.items():
-        try:
-            market = json.loads(market_json)
-            markets.append(market)
-        except Exception as e:
-            logger.error(f"Error parsing JSON for market {market_id}: {e}")
-            
-    return markets
+    return list(all_data.values())
 
 def show_active_markets(markets: List[Dict[str, Any]]):
     """
@@ -43,7 +28,7 @@ def show_active_markets(markets: List[Dict[str, Any]]):
     
     if not active_markets:
         print("\n" + "="*80)
-        print("No active markets found in Redis.")
+        print("No active markets found in active market store.")
         print("="*80)
         return
 
@@ -77,7 +62,7 @@ def show_active_markets(markets: List[Dict[str, Any]]):
 
 if __name__ == "__main__":
     try:
-        markets = get_all_markets_from_redis()
+        markets = get_all_markets_from_store()
         show_active_markets(markets)
     except Exception as e:
         logger.error(f"Failed to query active markets: {e}")

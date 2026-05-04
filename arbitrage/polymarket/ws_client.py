@@ -6,7 +6,7 @@ import time
 from typing import List, Callable, Optional, Set
 from config import settings
 from arbitrage.polymarket.engine import polymarket_engine
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 from sqlalchemy import text
 
 # 配置日志
@@ -82,19 +82,19 @@ class PolyMarketWebsocketClient:
             logger.error(f"Failed to fetch marked market IDs: {e}")
         return market_ids
 
-    def get_tokens_from_redis(self, market_ids: Set[str]) -> List[str]:
-        """根据 market_ids 从 Redis 中获取对应的 clobTokenIds"""
+    def get_tokens_from_store(self, market_ids: Set[str]) -> List[str]:
+        """根据 market_ids 从配置的数据存储中获取对应的 clobTokenIds"""
         if not market_ids:
             return []
-        
+
         tokens = []
         try:
-            rc = get_redis_client()
-            all_data = rc.hgetall("polymarket:active_markets")
+            store = get_active_market_store()
+            all_data = store.get_all_markets()
             for m_id in market_ids:
-                if m_id in all_data:
+                market = all_data.get(str(m_id))
+                if market:
                     try:
-                        market = json.loads(all_data[m_id])
                         clob_token_ids = market.get("clobTokenIds")
                         if clob_token_ids:
                             if isinstance(clob_token_ids, str):
@@ -102,9 +102,9 @@ class PolyMarketWebsocketClient:
                             if isinstance(clob_token_ids, list):
                                 tokens.extend(clob_token_ids)
                     except Exception as e:
-                        logger.error(f"Error parsing market {m_id} from Redis: {e}")
+                        logger.error(f"Error parsing market {m_id} from active market store: {e}")
         except Exception as e:
-            logger.error(f"Failed to fetch tokens from Redis: {e}")
+            logger.error(f"Failed to fetch tokens from active market store: {e}")
         return list(set(tokens)) # 去重
 
     def subscribe_marked_tokens(self, channel: str = "Market", callback: Optional[Callable] = None):
@@ -114,7 +114,7 @@ class PolyMarketWebsocketClient:
             logger.info("No marked markets found to subscribe.")
             return
 
-        tokens = self.get_tokens_from_redis(market_ids)
+        tokens = self.get_tokens_from_store(market_ids)
         if tokens:
             logger.info(f"Subscribing to {len(tokens)} tokens from marked markets.")
             self.subscribe(tokens, channel=channel, callback=callback)
@@ -128,7 +128,7 @@ class PolyMarketWebsocketClient:
             logger.info("No marked markets found to preload.")
             return
 
-        tokens = self.get_tokens_from_redis(market_ids)
+        tokens = self.get_tokens_from_store(market_ids)
         if not tokens:
             logger.info("No tokens found for marked markets.")
             return

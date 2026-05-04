@@ -1,25 +1,20 @@
 import json
 import logging
 import time
+from arbitrage.polymarket.active_market_store import get_active_market_store
 from arbitrage.polymarket.client import PolyMarketClient
-from arbitrage.polymarket.redis_client import get_redis_client
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
-def get_first_tokens_from_redis():
-    """从 Redis 中获取第一个活跃市场的所有 Token ID"""
-    redis_client = get_redis_client()
+def get_first_tokens_from_store():
+    """从配置的数据存储中获取第一个活跃市场的所有 Token ID"""
+    store = get_active_market_store()
     try:
-        keys = redis_client.hkeys(REDIS_KEY_ACTIVE_MARKETS)
-        if not keys:
+        market = store.get_first_market()
+        if not market:
             return []
-        
-        market_json = redis_client.hget(REDIS_KEY_ACTIVE_MARKETS, keys[0])
-        market = json.loads(market_json)
         clob_token_ids_raw = market.get('clobTokenIds')
         
         if isinstance(clob_token_ids_raw, str):
@@ -29,11 +24,11 @@ def get_first_tokens_from_redis():
             
         return token_ids if isinstance(token_ids, list) else []
     except Exception as e:
-        logger.error(f"Error fetching tokens from Redis: {e}")
+        logger.error(f"Error fetching tokens from active market store: {e}")
     return []
 
 def main():
-    token_ids = get_first_tokens_from_redis()
+    token_ids = get_first_tokens_from_store()
     if not token_ids:
         logger.error("Could not find any valid token IDs to monitor.")
         return

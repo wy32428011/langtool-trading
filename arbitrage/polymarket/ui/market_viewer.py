@@ -11,17 +11,15 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(o
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 from arbitrage.polymarket.engine import polymarket_engine
 from sqlalchemy import text
 from arbitrage.polymarket.stats.analyze_sport_matrix import parse_matrix, check_combination_rules
 
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
 class MarketSearchView(ttk.Frame):
-    def __init__(self, parent, redis_client):
+    def __init__(self, parent, active_market_store):
         super().__init__(parent)
-        self.redis_client = redis_client
+        self.active_market_store = active_market_store
         self.current_results = []
         self._init_ui()
 
@@ -108,6 +106,14 @@ class MarketSearchView(ttk.Frame):
 
         self.count_label = ttk.Label(row6, text="总数量: 0")
         self.count_label.pack(side=tk.LEFT, padx=20)
+
+        ttk.Label(row6, text="排序:").pack(side=tk.LEFT, padx=(20, 2))
+        self.sort_var = tk.StringVar(value="volumeNum")
+        self.sort_combo = ttk.Combobox(row6, textvariable=self.sort_var,
+                                       values=["volumeNum", "competitive"],
+                                       width=14, state="readonly")
+        self.sort_combo.pack(side=tk.LEFT)
+        self.sort_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_sort())
 
         # 中部主体区域 (使用 PanedWindow 分隔列表和详情)
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -219,13 +225,12 @@ class MarketSearchView(ttk.Frame):
         self.current_results = []
         
         try:
-            # 获取 Redis 数据
-            all_data = self.redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
-            
+            # 获取活跃市场数据
+            all_data = self.active_market_store.get_all_markets()
+
             count = 0
-            for m_id, m_json in all_data.items():
+            for m_id, market in all_data.items():
                 try:
-                    market = json.loads(m_json)
                     
                     conditions_results = []
 
@@ -323,18 +328,8 @@ class MarketSearchView(ttk.Frame):
                 except Exception:
                     continue
             
-            # 按照 volumeNum 排序 (从大到小)
-            self.current_results.sort(key=lambda x: float(x.get("volumeNum") or 0), reverse=True)
-            
-            # 清空并重新插入到 listbox
-            self.listbox.delete(0, tk.END)
-            for m in self.current_results:
-                title = m.get("question") or m.get("title") or f"ID: {m.get('marketId') or 'unknown'}"
-                # 如果有成交量，显示在标题中
-                vol = m.get("volumeNum") or 0
-                self.listbox.insert(tk.END, f"[{vol}] {title}")
-                count += 1
-            
+            self._apply_sort()
+            count = len(self.current_results)
             self.count_label.config(text=f"总数量: {count}")
             
             if self.current_results:
@@ -344,7 +339,19 @@ class MarketSearchView(ttk.Frame):
                 messagebox.showinfo("无结果", "未找到匹配的市场")
             
         except Exception as e:
-            messagebox.showerror("查询失败", f"访问 Redis 时出错: {str(e)}")
+            messagebox.showerror("查询失败", f"访问活跃市场数据时出错: {str(e)}")
+
+    def _apply_sort(self):
+        sort_key = self.sort_var.get()
+        self.current_results.sort(key=lambda x: float(x.get(sort_key) or 0), reverse=True)
+        self.listbox.delete(0, tk.END)
+        for m in self.current_results:
+            title = m.get("question") or m.get("title") or f"ID: {m.get('marketId') or 'unknown'}"
+            val = m.get(sort_key) or 0
+            self.listbox.insert(tk.END, f"[{val}] {title}")
+        if self.current_results:
+            self.listbox.selection_set(0)
+            self.on_market_select(None)
 
     def on_market_select(self, event):
         selection = self.listbox.curselection()
@@ -622,9 +629,9 @@ class MatrixAnalyzerView(ttk.Frame):
             messagebox.showerror("更新错误", f"更新数据库失败: {str(e)}")
 
 class MarkedFifaMatrixView(ttk.Frame):
-    def __init__(self, parent, redis_client):
+    def __init__(self, parent, active_market_store):
         super().__init__(parent)
-        self.redis_client = redis_client
+        self.active_market_store = active_market_store
         self.table_name = "polymarket_fifa_matrix"
         self.mark_table_name = "polymarket_fifa_matrix_marks"
         self._init_ui()
@@ -778,8 +785,8 @@ class MarkedFifaMatrixView(ttk.Frame):
         """)
 
         try:
-            # 获取 Redis 缓存数据以提取 Token
-            all_redis_data = self.redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
+            # 获取活跃市场数据以提取 Token
+            all_market_data = self.active_market_store.get_all_markets()
             
             with polymarket_engine.connect() as conn:
                 result = conn.execute(query)
@@ -787,8 +794,8 @@ class MarkedFifaMatrixView(ttk.Frame):
                     m_a_id, m_b_id, gen_q_a_raw, gen_q_b_raw = row
                     
                     # 获取 A 和 B 的 Token
-                    tokens_a = self._get_tokens(m_a_id, all_redis_data)
-                    tokens_b = self._get_tokens(m_b_id, all_redis_data)
+                    tokens_a = self._get_tokens(m_a_id, all_market_data)
+                    tokens_b = self._get_tokens(m_b_id, all_market_data)
                     
                     # 格式化显示
                     gen_q_a = str(gen_q_a_raw)
@@ -803,11 +810,11 @@ class MarkedFifaMatrixView(ttk.Frame):
         except Exception as e:
             messagebox.showerror("加载错误", f"获取已标记数据失败: {str(e)}")
 
-    def _get_tokens(self, market_id, all_redis_data) -> List[str]:
-        if market_id not in all_redis_data:
+    def _get_tokens(self, market_id, all_market_data) -> List[str]:
+        market = all_market_data.get(str(market_id))
+        if not market:
             return ["N/A"]
         try:
-            market = json.loads(all_redis_data[market_id])
             clob_token_ids = market.get("clobTokenIds")
             if clob_token_ids:
                 if isinstance(clob_token_ids, str):
@@ -824,7 +831,7 @@ class MarketViewer(tk.Tk):
         self.title("Polymarket 综合工具")
         self.geometry("1100x750")
         
-        self.redis_client = get_redis_client()
+        self.active_market_store = get_active_market_store()
         self._setup_menu()
         
         self.container = ttk.Frame(self)
@@ -849,10 +856,10 @@ class MarketViewer(tk.Tk):
         view_menu.add_command(label="退出", command=self.quit)
 
     def _init_views(self):
-        self.views["search"] = MarketSearchView(self.container, self.redis_client)
+        self.views["search"] = MarketSearchView(self.container, self.active_market_store)
         self.views["matrix"] = MatrixAnalyzerView(self.container)
         self.views["fifa_matrix"] = MatrixAnalyzerView(self.container, table_name="polymarket_fifa_matrix", mark_table_name="polymarket_fifa_matrix_marks")
-        self.views["fifa_marked"] = MarkedFifaMatrixView(self.container, self.redis_client)
+        self.views["fifa_marked"] = MarkedFifaMatrixView(self.container, self.active_market_store)
         
         for view in self.views.values():
             view.place(relx=0, rely=0, relwidth=1, relheight=1)

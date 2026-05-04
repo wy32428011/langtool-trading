@@ -1,43 +1,26 @@
-import json
 import logging
 from collections import defaultdict
 from typing import Dict, Any, List
 
-from arbitrage.polymarket.redis_client import get_redis_client
+from arbitrage.polymarket.active_market_store import get_active_market_store
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Redis Key
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
-def get_all_markets_from_redis() -> List[Dict[str, Any]]:
+def get_all_markets_from_store() -> List[Dict[str, Any]]:
     """
-    从 Redis 获取所有市场数据
+    从配置的数据存储获取所有市场数据
     """
-    redis_client = get_redis_client()
-    all_data = redis_client.hgetall(REDIS_KEY_ACTIVE_MARKETS)
-    if not all_data:
-        return []
-        
-    markets = []
-    for market_id, market_json in all_data.items():
-        try:
-            market = json.loads(market_json)
-            markets.append(market)
-        except Exception as e:
-            logger.error(f"Error parsing JSON for market {market_id}: {e}")
-            
-    return markets
+    return list(get_active_market_store().get_all_markets().values())
 
 def show_classified_markets():
     """
     显示已分类的市场数据详情
     """
-    markets = get_all_markets_from_redis()
+    markets = get_all_markets_from_store()
     if not markets:
-        print("No markets found in Redis.")
+        print("No markets found in active market store.")
         return
 
     # 过滤出已分类的市场

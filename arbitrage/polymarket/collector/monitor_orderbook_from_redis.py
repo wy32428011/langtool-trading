@@ -2,36 +2,25 @@ import json
 import logging
 import time
 from typing import Dict, Any, List
+from arbitrage.polymarket.active_market_store import get_active_market_store
 from arbitrage.polymarket.client import PolyMarketClient
-from arbitrage.polymarket.redis_client import get_redis_client
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Redis Key
-REDIS_KEY_ACTIVE_MARKETS = "polymarket:active_markets"
-
-def get_first_market_from_redis(redis_client) -> Dict[str, Any]:
+def get_first_market_from_store(store) -> Dict[str, Any]:
     """
-    从 Redis 中获取第一个市场的数据
+    从配置的数据存储中获取第一个市场的数据
     """
-    # HGETALL 会返回所有字段和值，我们只需要其中的一个
-    # 或者可以使用 HSCAN 获取一个
-    # 这里我们使用 HKEYS 获取所有 ID，然后取第一个进行 HGET
     try:
-        keys = redis_client.hkeys(REDIS_KEY_ACTIVE_MARKETS)
-        if not keys:
-            logger.warning(f"No markets found in Redis key: {REDIS_KEY_ACTIVE_MARKETS}")
-            return None
-        
-        first_key = keys[0]
-        market_json = redis_client.hget(REDIS_KEY_ACTIVE_MARKETS, first_key)
-        if market_json:
-            return json.loads(market_json)
+        market = store.get_first_market()
+        if not market:
+            logger.warning("No markets found in active market store.")
+        return market
     except Exception as e:
-        logger.error(f"Error fetching first market from Redis: {e}")
-    
+        logger.error(f"Error fetching first market from active market store: {e}")
+
     return None
 
 def monitor_orderbook(client: PolyMarketClient, token_ids: List[str], interval: int = 5):
@@ -80,13 +69,13 @@ def monitor_orderbook(client: PolyMarketClient, token_ids: List[str], interval: 
 
 def main():
     # 初始化
-    redis_client = get_redis_client()
+    store = get_active_market_store()
     poly_client = PolyMarketClient()
-    
-    # 1. 从 Redis 拿第一个市场
-    market = get_first_market_from_redis(redis_client)
+
+    # 1. 从配置的数据存储拿第一个市场
+    market = get_first_market_from_store(store)
     if not market:
-        logger.error("Could not find any market data in Redis. Please run update_active_markets_to_redis.py first.")
+        logger.error("Could not find any market data in active market store. Please run update_active_markets_to_redis.py first.")
         return
     
     market_id = market.get('id')
@@ -94,7 +83,7 @@ def main():
     logger.info(f"Selected market: {question} (ID: {market_id})")
     
     # 2. 解析 token IDs
-    # clobTokenIds 在 Redis 中存储为 JSON 字符串或列表
+    # clobTokenIds 可能是 JSON 字符串或列表
     clob_token_ids_raw = market.get('clobTokenIds')
     if isinstance(clob_token_ids_raw, str):
         try:
